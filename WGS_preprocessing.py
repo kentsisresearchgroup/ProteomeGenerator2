@@ -70,7 +70,7 @@ elif input_file_format == 'fastq':
         input: read_one=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'],read_two=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz']
         output: read_one=temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.1.fq"), read_two=temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.2.fq")
         params: n="8", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/fastp.out", eo="out/logs/fastp.err", J="fastp_qc"
-        conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+        conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
         shell: "fastp -i {input.read_one} -o {output.read_one} -I {input.read_two} -O {output.read_two}"
 
     rule pre_01_GenerateRGWiseUbamsFromFq:
@@ -81,7 +81,7 @@ elif input_file_format == 'fastq':
                 output_bamfile=lambda wildcards: WD + "/out/WGS/{}/{}.{}.unmapped.bam".format(wildcards.tumor_or_normal,wildcards.sample,wildcards.readgroup), \
                 library_name = lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['optional']['library_id'], sequencing_platform= lambda wildcards:config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['optional']['sequencing_platform'], \
                 max_records_in_ram = 250000*96
-        conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+        conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
         shell: "picard FastqToSam -Xmx96g TMP_DIR={TMP} \
                  FASTQ={input.read_one} FASTQ2={input.read_two} OUTPUT={params.output_bamfile} \
                  READ_GROUP_NAME={wildcards.readgroup} SAMPLE_NAME={wildcards.sample} \
@@ -92,21 +92,14 @@ elif input_file_format == 'fastq':
         input:  read_one="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.1.fq", read_two="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.2.fq", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=STOCK_GENOME_FASTA.strip('fa')+'dict',bwa_idx=BWA_INDEX
         output: temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted.bam")
         params: n="24", R="'span[hosts=1] rusage[mem=12]'", o="out/logs/bwa_fastq.out", eo="out/logs/bwa_fastq.err", J="bwa_align", tumor_or_normal=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['matched_sample_params']['tumor_or_normal'] if config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['matched_sample_params']['is_matched_sample'] else 'tumor', output_bamfile=lambda wildcards:WD + "/out/WGS/{}/{}.{}.aligned_sorted.bam".format(wildcards.tumor_or_normal,wildcards.sample,wildcards.readgroup)
-        conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+        conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
         shell: "bwa mem -M -t {params.n} {STOCK_GENOME_FASTA} {input.read_one} {input.read_two} | samtools view -Shu -@ {params.n} - | samtools sort -n -m 11G -T {TMP} -@ {params.n} -o {params.output_bamfile} /dev/stdin"
 
-    rule pre_03_FixMatePairs:
-        input: "out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted.bam"
-        output: "out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted_mates-fixed.bam"
-        params: n="8", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/fixmates.out", eo="out/logs/fixmates.err", J="fixmates"
-        conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
-        shell: "samtools fixmate -@ {params.n} {input} {output}"
-
-    rule pre_04_MergeMappedAndUnmappedReadsByRG_FQ:
+    rule pre_03_MergeMappedAndUnmappedReadsByRG_FQ:
         input: aligned="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted_mates-fixed.bam",ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam"
-        output: temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted_mates-fixed_ubam-merged.bam")
+        output: temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted_ubam-merged.bam")
         params: n="24", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/merge_by_RG.out", eo="out/logs/merge_by_RG.err", J="merge_bams_by_RG"
-        conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+        conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
         shell: "picard MergeBamAlignment -Xmx192g ALIGNED_BAM={input.aligned} UNMAPPED_BAM={input.ubam} \
                   REFERENCE_SEQUENCE={STOCK_GENOME_FASTA} OUTPUT={output} CREATE_INDEX=true \
                   CLIP_ADAPTERS=true CLIP_OVERLAPPING_READS=true \
@@ -114,20 +107,33 @@ elif input_file_format == 'fastq':
                   ATTRIBUTES_TO_RETAIN=XS \
                   MAX_RECORDS_IN_RAM=30000000 TMP_DIR={TMP}"
 
-rule pre_05_MergeAllRGs:
-    input: lambda wildcards: expand("out/WGS/{{tumor_or_normal}}/{{sample}}.{readgroup}.aligned_sorted_mates-fixed_ubam-merged.bam", readgroup=config['input_files']['genome_personalization_module'][input_file_format+'_inputs'][wildcards.sample]['read_groups'].keys())
-    output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged.bam")
+rule pre_04MergeAllRGs:
+    input: lambda wildcards: expand("out/WGS/{{tumor_or_normal}}/{{sample}}.{readgroup}.aligned_sorted_ubam-merged.bam", readgroup=config['input_files']['genome_personalization_module'][input_file_format+'_inputs'][wildcards.sample]['read_groups'].keys())
+    output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged.bam")
     params: n="16", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/merge_RGs.out", eo="out/logs/merge_RGs.err", J="merge_RGs"
-    conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+    conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
     shell: "samtools merge -@ {params.n} {output} {input}"
 
+rule pre_05_NameSortAndFixMatePairs:
+    input: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged.bam"
+    output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed.bam")
+    params: n="16", R="'span[hosts=1] rusage[mem=6]'", o="out/logs/fixmates.out", eo="out/logs/fixmates.err", J="fixmates"
+    conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
+    shell: "samtools sort -n -m 6G -T {TMP} -@ {params.n} {input} | samtools fixmate -m -@ {params.n} - {output}"
+
 rule pre_06_CoordSortAndMarkDups:
-    input: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged.bam"
-    output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam")
+    input: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed.bam"
+    output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bam")
     params: n="24", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/markdups.out", eo="out/logs/markdups.err", J="markdups"
-    conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
-    shell: "samtools sort -@ {params.n} -m 7G -T {TMP} {input} | \
-            samtools markdup -@ {params.n} -T {TMP} /dev/stdin {output}"
+    conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
+    shell: "samtools sort -@ {params.n} -T {TMP} {input} | samtools markdup -@ {params.n} -T {TMP} - {output}"
+
+rule pre_07_IndexBam:
+    input: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bam"
+    output: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bai"
+    params: n="4", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/index_bam.out", eo="out/logs/index_bam.err", J="index_bam"
+    conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
+    shell: "samtools index {input} {output}"
 
 rule pre_00a_CreateIntervalsWithoutNs:
     input: STOCK_GENOME_FASTA
@@ -157,7 +163,7 @@ snakemake.utils.makedirs('out/logs/BQSR')
 snp_known_sites=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['snps_db']
 indel_known_sites=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
 rule pre_07_BaseRecalibrator:
-    input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
+    input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
     output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-calculate/{sample}.bqsr-{interval}.report")
     params: n="8", R="'span[hosts=1] rusage[mem=4]'", \
 	    o="out/logs/BQSR/{interval}_BQSR.out", eo="out/logs/BQSR/{interval}_BQSR.err", \
@@ -175,8 +181,8 @@ rule pre_08_GatherBqsrReports:
     shell: "gatk GatherBQSRReports $(echo {input} | sed -r 's/[^ ]+/-I &/g') -O {output}"
 
 rule pre_09a_ApplyBQSRToMappedReads:
-    input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
-    output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_{interval}_scatteredBQSR.bam")
+    input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
+    output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_{interval}_scatteredBQSR.bam")
     wildcard_constraints: interval="\d+"
     params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
 	    o="out/logs/mapped_bqsr_{interval}.out", eo="out/logs/mapped_bqsr{interval}.err", \
@@ -188,8 +194,8 @@ rule pre_09a_ApplyBQSRToMappedReads:
 	      -L {input.interval_list}"
 
 rule pre_09b_ApplyBQSRToUnmappedReads:
-    input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam"
-    output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_unmapped_scatteredBQSR.bam")
+    input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup.bam"
+    output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_unmapped_scatteredBQSR.bam")
     params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
 	    o="out/logs/unmapped_bqsr.out", eo="out/logs/unmapped_bqsr.err", \
 	    J="unmapped_bqsr"
@@ -200,9 +206,9 @@ rule pre_09b_ApplyBQSRToUnmappedReads:
 	      -L unmapped"
 	     
 rule pre_10_GatherRecalibratedBAMs:
-    input: mapped=expand("out/WGS/{{tumor_or_normal}}/BQSR/scattered-apply/{{sample}}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_{interval}_scatteredBQSR.bam",interval=[str(x).zfill(4) for x in range(NUM_BQSR_INTERVALS)]), \
-	   unmapped="out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_unmapped_scatteredBQSR.bam"
-    output: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
+    input: mapped=expand("out/WGS/{{tumor_or_normal}}/BQSR/scattered-apply/{{sample}}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_{interval}_scatteredBQSR.bam",interval=[str(x).zfill(4) for x in range(NUM_BQSR_INTERVALS)]), \
+	   unmapped="out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_unmapped_scatteredBQSR.bam"
+    output: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai"
     params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
 	    o="out/logs/gather_reclaibrated_bams.out", eo="out/logs/gather_recalibrated_bams.err", \
 	    J="gather_recalibrated_bams"
@@ -230,5 +236,5 @@ rule util_CreateBWAindex:
     input: STOCK_GENOME_FASTA
     output: BWA_INDEX
     params: n="24", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/bwa_index.out", eo="out/logs/bwa_index.err", J="create_bwa_index"
-    conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
+    conda: "{PG2_HOME}/envs/bwa_picard_samtools.yaml"
     shell: "bwa index -a bwtsw {input}"

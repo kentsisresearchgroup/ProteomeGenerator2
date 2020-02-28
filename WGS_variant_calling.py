@@ -61,7 +61,7 @@ rule var_00_ScatterVariantCallingIntervals:
 
 if running_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai")
+        input: bam=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai")
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
@@ -71,7 +71,7 @@ if running_preprocessing:
 
 elif just_ran_WGS_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
+        input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai"
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 

@@ -30,8 +30,9 @@ if input_file_format == 'vcf':
 
 calling_variants = config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['call_germline_variants_with_GATK4_HaplotypeCaller'] or config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['if_inputs_are_matched_tumor-normal_samples']['call_somatic_variants_with_GATK4_Mutect2']
 #calling_variants = False if input_file_format == 'vcf' else True # True if input is 'fastq' or 'bam'
+just_called_variants = config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['continuation']['just_finished_variant_calling']
 
-if not calling_variants: assert input_file_format == 'vcf'
+if not (calling_variants or just_called_variants): assert input_file_format == 'vcf'
 if calling_variants:
     TUMOR_SAMPLES=[]
     #NORMAL_SAMPLES=[]
@@ -65,9 +66,17 @@ subworkflow WGS_variant_calling:
 # For each chromosome, patch the stock reference with variants contained in the (phased) VCF.
 # *we use the included dev branch of bcftools because the latest release (1.9) has a bug in bcftools consensus*
 BCFTOOLS_DEV = os.path.join(PG2_HOME, config['non-conda_packages']['bcftools-dev'])
-if calling_variants:
+if (not just_called_variants) and calling_variants:
     rule genome_01_CreateChrWiseCustomRef:
         input: vcf=WGS_variant_calling("out/WGS/variant_calling/cohort/{cohort}.variant_calling_finished.vcf.gz")
+        output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
+                samples=TUMOR_SAMPLES[0]
+        conda: "{PG2_HOME}/envs/bcftools.yaml"
+        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
+elif just_called_variants:
+    rule genome_01_CreateChrWiseCustomRef:
+        input: vcf="out/WGS/variant_calling/cohort/{cohort}.variant_calling_finished.vcf.gz"
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
                 samples=TUMOR_SAMPLES[0]
@@ -99,10 +108,10 @@ rule genome_02a_MergeChrWiseCustomRef:
 # Adjust ref annotation coords to account for indels
 rule genome_02b_LiftoverAnnotationGTF:
     input: chain="out/custom_ref/{cohort}_H{htype}.chain", vcf_refGtf=STOCK_GENOME_GTF
-    output: "out/custom_ref/{cohort}_H{htype}_temp.gtf"
+    output: "out/custom_ref/{cohort}_H{htype}.gtf"
     params: n="1", R="'rusage[mem=4]'", J="LiftoverGTF", o="out/logs/liftover.out", eo="out/logs/liftover.err"
     conda: "{PG2_HOME}/envs/crossmap.yaml"
-    shell: "CrossMap.py gff {input.chain} {input.vcf_refGtf} | awk '\{print \"{wildcards.htype}\" $0\}' > {output}"
+    shell: "CrossMap.py gff {input.chain} {input.vcf_refGtf} | awk '\{print \"{wildcards.htype}_\" $0\}' > {output}"
 
 rule CreateRefSequenceIndex:
     input: STOCK_GENOME_FASTA
