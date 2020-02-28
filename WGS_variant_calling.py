@@ -330,4 +330,8 @@ rule var_z_FinishedNormalVCF:
     params: n="1", R="'span[hosts=1]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
-    shell: "ln -s {input} {output}"
+    run:
+        in_path = os.path.abspath(input[0])
+        out_path = os.path.abspath(output[0])
+        command = "ln -s {} {}".format(in_path, out_path)
+        shell(command)

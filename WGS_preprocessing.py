@@ -114,14 +114,14 @@ elif input_file_format == 'fastq':
                   ATTRIBUTES_TO_RETAIN=XS \
                   MAX_RECORDS_IN_RAM=30000000 TMP_DIR={TMP}"
 
-rule pre_04_MergeAllRGs:
+rule pre_05_MergeAllRGs:
     input: lambda wildcards: expand("out/WGS/{{tumor_or_normal}}/{{sample}}.{readgroup}.aligned_sorted_mates-fixed_ubam-merged.bam", readgroup=config['input_files']['genome_personalization_module'][input_file_format+'_inputs'][wildcards.sample]['read_groups'].keys())
     output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged.bam")
     params: n="16", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/merge_RGs.out", eo="out/logs/merge_RGs.err", J="merge_RGs"
     conda: "{PG2_HOME}/envs/bwa_picard_samtools_sambamba.yaml"
     shell: "samtools merge -@ {params.n} {output} {input}"
 
-rule pre_05_CoordSortAndMarkDups:
+rule pre_06_CoordSortAndMarkDups:
     input: "out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged.bam"
     output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam")
     params: n="24", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/markdups.out", eo="out/logs/markdups.err", J="markdups"
@@ -156,7 +156,7 @@ snakemake.utils.makedirs('out/logs/BQSR')
 
 snp_known_sites=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['snps_db']
 indel_known_sites=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
-rule pre_06_BaseRecalibrator:
+rule pre_07_BaseRecalibrator:
     input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
     output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-calculate/{sample}.bqsr-{interval}.report")
     params: n="8", R="'span[hosts=1] rusage[mem=4]'", \
@@ -165,7 +165,7 @@ rule pre_06_BaseRecalibrator:
     conda: "{PG2_HOME}/envs/gatk4.yaml"
     shell: "gatk --java-options '-Xmx64g' BaseRecalibrator -I {input.bam} -R {STOCK_GENOME_FASTA} --known-sites {snp_known_sites} --known-sites {indel_known_sites} -O {output} -L {input.interval_list}"
 
-rule pre_07_GatherBqsrReports:
+rule pre_08_GatherBqsrReports:
     input: expand("out/WGS/{{tumor_or_normal}}/BQSR/scattered-calculate/{{sample}}.bqsr-{interval}.report", interval=[str(x).zfill(4) for x in range(NUM_BQSR_INTERVALS)])
     output: "out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report"
     params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
@@ -174,7 +174,7 @@ rule pre_07_GatherBqsrReports:
     conda: "{PG2_HOME}/envs/gatk4.yaml"
     shell: "gatk GatherBQSRReports $(echo {input} | sed -r 's/[^ ]+/-I &/g') -O {output}"
 
-rule pre_08a_ApplyBQSRToMappedReads:
+rule pre_09a_ApplyBQSRToMappedReads:
     input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam",interval_list="out/WGS/intervals/BQSR/{interval}-scattered.interval_list"
     output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_{interval}_scatteredBQSR.bam")
     wildcard_constraints: interval="\d+"
@@ -187,7 +187,7 @@ rule pre_08a_ApplyBQSRToMappedReads:
 	      --bqsr-recal-file {input.bqsr} \
 	      -L {input.interval_list}"
 
-rule pre_08b_ApplyBQSRToUnmappedReads:
+rule pre_09b_ApplyBQSRToUnmappedReads:
     input: bqsr="out/WGS/{tumor_or_normal}/BQSR/{sample}.bqsr-calculated.report",bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup.bam"
     output: temp("out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_unmapped_scatteredBQSR.bam")
     params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
@@ -199,7 +199,7 @@ rule pre_08b_ApplyBQSRToUnmappedReads:
 	      --bqsr-recal-file {input.bqsr} \
 	      -L unmapped"
 	     
-rule pre_09_GatherRecalibratedBAMs:
+rule pre_10_GatherRecalibratedBAMs:
     input: mapped=expand("out/WGS/{{tumor_or_normal}}/BQSR/scattered-apply/{{sample}}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_{interval}_scatteredBQSR.bam",interval=[str(x).zfill(4) for x in range(NUM_BQSR_INTERVALS)]), \
 	   unmapped="out/WGS/{tumor_or_normal}/BQSR/scattered-apply/{sample}.aligned_sorted_mates-fixed_ubam-merged_RG-merged_dedup_fixedtags_unmapped_scatteredBQSR.bam"
     output: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
