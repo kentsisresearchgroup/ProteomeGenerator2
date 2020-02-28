@@ -1,0 +1,6 @@
+name: stringtie
+channels:
+  - bioconda
+  - defaults
+dependencies:
+  - stringtie=1.3.4

@@ -1,0 +1,19 @@
+name: bwa_picard_samtools_sambamba
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - bwa=0.7.17=ha92aebf_3
+  - htslib=1.9=hc238db4_4
+  - picard=2.18.21=0
+  - sambamba=0.7.1
+  - samtools=1.9=h8ee4bcc_1
+  - python=3.6.6=h5001a0f_3
+  - numpy-base=1.15.4=py36hde5b4d6_0
+  - openjdk=8.0.152=h46b5887_1
+  - perl=5.26.2=h14c3975_0
+  - zlib=1.2.11=h7b6447c_3
+  - fastp
+

@@ -1,0 +1,8 @@
+name: pindel
+channels:
+  - bioconda
+  - r
+  - defaults
+dependencies:
+  - pindel=0.2.5b9
+  - samtools=1.9
