@@ -61,7 +61,8 @@ if creating_custom_genome or continuing_after_genome_personalization:
 else:
     PG2_GENOME_FASTA = STOCK_GENOME_FASTA
     PG2_GENOME_GTF = STOCK_GENOME_GTF
-    PG2_STAR_INDEX = os.path.join(config['stock_references']['genome']['optional_aligner_indices']['STAR_index_dir'],'SA') or "out/custom_ref/{}.h-{{htype}}.STARindex/SA".format(PG2_GENOME_FASTA.strip('.fa'))
+    prebuilt_STAR_index_dir = config['stock_references']['genome']['optional_aligner_indices']['STAR_index_dir']
+    PG2_STAR_INDEX = os.path.join(prebuilt_STAR_index_dir,'SA') if prebuilt_STAR_index_dir else "out/custom_ref/{}.h-{{htype}}.STARindex/SA".format(os.path.basename(PG2_GENOME_FASTA).strip('.fa'))
  
 snakemake.utils.makedirs('out')
 snakemake.utils.makedirs('out/benchmarks')
@@ -87,7 +88,6 @@ subworkflow create_custom_genome:
 STAR_2_7_2d = '/home/kwokn/STAR-2.7.2d/bin/Linux_x86_64/STAR'
 rule RNA_00_STAR_CreateGenomeIndex:
     input: fasta=(create_custom_genome(PG2_GENOME_FASTA) if creating_custom_genome else PG2_GENOME_FASTA),gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
-    #input: fasta=create_custom_genome(PG2_GENOME_FASTA),gtf=create_custom_genome(PG2_GENOME_GTF)
     output: expand("out/custom_ref/{cohort}.h-{{htype}}.STARindex/SA",cohort=COHORT)
     benchmark: "out/benchmarks/h-{htype}.index.txt"
     log: "out/logs/h-{htype}.index.txt"

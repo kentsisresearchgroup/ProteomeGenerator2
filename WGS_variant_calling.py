@@ -68,6 +68,7 @@ if running_preprocessing:
             in_bam_path = os.path.abspath(input.bam)
             in_bai_path = os.path.abspath(input.bai)
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
+            shell(command)
 
 elif just_ran_WGS_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
@@ -78,6 +79,7 @@ elif just_ran_WGS_preprocessing:
             in_bam_path = os.path.abspath(input.bam)
             in_bai_path = os.path.abspath(input.bai)
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
+            shell(command)
 
 else:
     PROCESSED_BAM_DICT=dict(config['input_files']['genome_personalization_module']['bam_inputs'])
@@ -85,7 +87,6 @@ else:
     for sample_name in PROCESSED_BAM_DICT.keys():
         if not PROCESSED_BAM_DICT[sample_name]['pre-processing_already_complete']: all_bams_preprocessed = False
     assert(input_file_format=='bam' and all_bams_preprocessed), "ERROR: Variant calling is turned on, but WGS/WES pre-processing is turned off. Therefore all input files must be coordinate-sorted, duplicate-marked, analysis-ready BAMs. Please ensure that this is the case, and if so that the corresponding parameters are set (i.e. input_files->genome_personalization_module->input_file_format = 'bam'; input_files->genome_personalization_module->bam_inputs-><sample>->pre-processing_already_complete = true). Please also double check that pre-processing was not disabled erroneously."
-#TODO: INCLUDE SYMLINK TO INDEX .bai FILE
     rule var_00_SymlinkToUserPreprocessedBam:
         input: bam=lambda wildcards: os.path.abspath(config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file']),bai=lambda wildcards: os.path.abspath(config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bai_file'])
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bai"
@@ -100,7 +101,6 @@ rule var_germ_01_CallGermlineVariantsPerInterval:
         J="generate_vcf_{interval}"
     conda: "{PG2_HOME}/envs/gatk4.yaml"
     shell: "gatk --java-options '-Xmx12g' HaplotypeCaller -R {STOCK_GENOME_FASTA} -I {input.bam} -O {output} -L {input.interval_list} -ERC GVCF"
-    #shell: "{JAVA} -Xmx16g -jar /home/kwokn/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar HaplotypeCaller -R {STOCK_GENOME_FASTA} -I {input.bam} -O {output} -L {input.interval_list} -ERC GVCF"
 
 rule var_germ_02_GenotypeTumorSamplePerInterval:
     input: gvcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf", interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
@@ -128,7 +128,7 @@ rule var_germ_03_CNN2D_ScoreVariants:
     input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
     output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
-        o="out/logs/intervals/score_variants_{interval}.out", eo="out/logs/intervalsscore_variants_{interval}.err", \
+        o="out/logs/intervals/score_variants_{interval}.out", eo="out/logs/intervals/score_variants_{interval}.err", \
         J="score_variants"
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
     shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} -L {input.interval_list} --tensor-type read_tensor"
