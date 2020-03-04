@@ -55,11 +55,11 @@ rule var_00_ScatterVariantCallingIntervals:
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/intervals/{interval}.out", eo="out/logs/intervals/{interval}.err", \
             J="generate_intervals_{interval}"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options '-Xmx8g' SplitIntervals \
               -R {STOCK_GENOME_FASTA} -L {input} -scatter {NUM_VARIANT_INTERVALS} -O out/WGS/intervals"
 
-if running_preprocessing:
+if (not just_ran_WGS_preprocessing) and running_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
         input: bam=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai")
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam.bai"
@@ -99,7 +99,7 @@ rule var_germ_01_CallGermlineVariantsPerInterval:
     params: n="4", R="'span[hosts=1] rusage[mem=3]'", \
         o="out/logs/intervals/vcf_{interval}.out", eo="out/logs/intervals/vcf_{interval}.err", \
         J="generate_vcf_{interval}"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options '-Xmx12g' HaplotypeCaller -R {STOCK_GENOME_FASTA} -I {input.bam} -O {output} -L {input.interval_list} -ERC GVCF"
 
 rule var_germ_02_GenotypeTumorSamplePerInterval:
@@ -108,7 +108,7 @@ rule var_germ_02_GenotypeTumorSamplePerInterval:
     params: n="2", R="'span[hosts=1] rusage[mem=32]'", \
         o="out/logs/intervals/genotype_gvcfs_{interval}.out", eo="out/logs/intervals/genotype_gvcfs_{interval}.err", \
         J="genotype_gvcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options '-Xmx64g' GenotypeGVCFs -R {STOCK_GENOME_FASTA} \
               -V {input.gvcf} -L {input.interval_list} -O {output}"
 
@@ -119,7 +119,7 @@ rule var_germ_03_MergeIntervalWiseGenotypedVCFs:
     params: n="1", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/merge_gvcfs.out", eo="out/logs/merge_gvcfs.err", \
         J="merge_gvcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs -Xmx16g $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 """
 
@@ -135,16 +135,18 @@ rule var_germ_03_CNN2D_ScoreVariants:
 
 HAPMAP=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['snps_db']
 MILLS=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
-TRANCHE_DICT={'SNP':config['parameters']['genome_personalization_module']['variant_calling']['snp_tranche'],'INDEL':config['parameters']['genome_personalization_module']['variant_calling']['indel_tranche']}
+SNP_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']
+INDEL_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['indel_tranche']
+#TRANCHE_DICT={'SNP':str(config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']),'INDEL':str(config['parameters']['genome_personalization_module']['variant_calling'['advanced']]['indel_tranche'])}
 rule var_germ_04_AssignVariantTranches:
     input: vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
     output: temp("out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz")
     params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
-        J="assign_tranches", \
-        snp_tranche=str(TRANCHE_DICT['SNP']), indel_tranche=str(TRANCHE_DICT['INDEL'])
+        J="assign_tranches"
+        #snp_tranche=str(TRANCHE_DICT['SNP']), indel_tranche=str(TRANCHE_DICT['INDEL'])
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {params.snp_tranche} --indel-tranche {params.indel_tranche} --invalidate-previous-filters -O {output} -L {input.interval_list}"
+    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
 
 rule var_germ_05_FilterNonpassingGermlineVariants:
     input: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz"
@@ -152,7 +154,7 @@ rule var_germ_05_FilterNonpassingGermlineVariants:
     params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/filter_germline.out", eo="out/logs/filter_germline.err", \
         J="filter_germline"
-    conda: "{PG2_HOME}/envs/bcftools.yaml"
+    conda: "envs/bcftools.yaml"
     shell: "bcftools view -f PASS {input} > {output}"
 
 rule var_germ_06_MergeIntervalWiseVCFs:
@@ -161,7 +163,7 @@ rule var_germ_06_MergeIntervalWiseVCFs:
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_germ_07t_MergeTumorSampleGermlineVCFs:
@@ -170,7 +172,7 @@ rule var_germ_07t_MergeTumorSampleGermlineVCFs:
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_germ_07n_MergeNormalSampleGermlineVCFs:
@@ -179,7 +181,7 @@ rule var_germ_07n_MergeNormalSampleGermlineVCFs:
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 
@@ -209,7 +211,7 @@ rule CallLongIndelsAndSVsWithPindel:
     params: n="4", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/variant_calling/chr-wise/pindel_{chr}.out", eo="out/logs/variant_calling/chr-wise/pindel_{chr}.err", \
         J="pindel"
-    conda: "{PG2_HOME}/envs/pindel.yaml"
+    conda: "envs/pindel.yaml"
     shell: "pindel -T {params.n} -f {input.ref_fasta} -i {input.config} -c {wildcards.chr} -o {output}"
 
 rule Pindel2Vcf:
@@ -218,7 +220,7 @@ rule Pindel2Vcf:
     params: n="4", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/variant_calling/chr-wise/pindel2vcf_{chr}.out", eo="out/logs/variant_calling/chr-wise/pindel2vcf_{chr}.err", \
         J="pindel2vcf"
-    conda: "{PG2_HOME}/envs/pindel.yaml"
+    conda: "envs/pindel.yaml"
     shell: "pindel2vcf -T {params.n} -p {input.pindel} -r {input.ref_fasta} -R-c {wildcards.chr} -G"
 
 ## PINDEL development ongoing ##
@@ -233,7 +235,7 @@ if NORMAL_SAMPLES is not None:
         params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
             J="mutect2_matched"
-        conda: "{PG2_HOME}/envs/gatk4.yaml"
+        conda: "envs/gatk4.yaml"
         shell: "gatk --java-options -Xmx8g Mutect2 -R {input.ref} -O {output.vcf} \
                   $(echo '{input.tumor}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{input.normal}' | sed -r 's/[^ ]+/-I &/g') \
@@ -248,7 +250,7 @@ else:
         params: n="24", R="'span[hosts=1] rusage[mem=4'", \
             o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
             J="mutect2_unmatched"
-        conda: "{PG2_HOME}/envs/gatk4.yaml"
+        conda: "envs/gatk4.yaml"
         shell: "gatk --java-options -Xmx96g Mutect2 -R {input.ref} -I {input.sample} -tumor {TUMOR_SAMPLES} --germline-resource {input.gnomad_af} -L {input.interval_list}"
 
 rule var_som_02_MergeScatteredMutect2VCFs:
@@ -257,7 +259,7 @@ rule var_som_02_MergeScatteredMutect2VCFs:
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_somatic.out", eo="out/logs/merge_somatic.err", \
             J="merge_somatic"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs -Xmx8g \
               $(echo '{input.vcf}' | sed -r 's/[^ ]+/I=&/g') \
               O={output}"
@@ -268,7 +270,7 @@ rule var_som_02a_MergeScatteredMutect2Stats:
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_mutect_stats.out", eo="out/logs/merge_mutect_stats.err", \
             J="merge_mutect_stats"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options -Xmx8g MergeMutectStats -O {output} \
               $(echo '{input.stats}' | sed -r 's/[^ ]+/-stats &/g')"
 
@@ -279,7 +281,7 @@ rule var_som_00a_GetTumorPileupSummaries:
     params: n="16", R="'span[hosts=1] rusage[mem=2]'", \
         o="out/logs/get_pileup_summaries.out", eo="out/logs/get_pileup_summaries.err", \
         J="get_pileup_summaries"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options -Xmx32g GetPileupSummaries -I {input.tumor} -V {input.gnomad_af} -L {input.intervals} -O {output}"
 
 rule var_som_00b_CalculateContamination:
@@ -288,7 +290,7 @@ rule var_som_00b_CalculateContamination:
     params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/calculate_contamination.out", eo="out/logs/calculate_contamination.err", \
         J="calculate_contamination"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options -Xmx32g CalculateContamination -I {input} -O {output}"
 
 rule var_som_03_FilterMutectCalls:
@@ -297,7 +299,7 @@ rule var_som_03_FilterMutectCalls:
     params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/filter_mutect2.out", eo="out/logs/filter_mutect2.err", \
         J="filter_mutect2"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "gatk --java-options -Xmx32g FilterMutectCalls -V {input.vcf} -R {input.ref} --contamination-table {input.contam_table} -stats {input.stats} -O {output}" 
 
 rule var_som_04_ReformatMutectVCF:
@@ -321,7 +323,7 @@ rule var_z_MergeFinishedTumorVCFs:
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
-    conda: "{PG2_HOME}/envs/gatk4.yaml"
+    conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_z_FinishedNormalVCF:
@@ -335,3 +337,4 @@ rule var_z_FinishedNormalVCF:
         out_path = os.path.abspath(output[0])
         command = "ln -s {} {}".format(in_path, out_path)
         shell(command)
+
