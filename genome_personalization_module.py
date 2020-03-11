@@ -72,7 +72,7 @@ if (not just_called_variants) and calling_variants:
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
                 samples=TUMOR_SAMPLES[0]
-        conda: "{PG2_HOME}/envs/bcftools.yaml"
+        conda: "envs/bcftools.yaml"
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 elif just_called_variants:
     rule genome_01_CreateChrWiseCustomRef:
@@ -80,22 +80,22 @@ elif just_called_variants:
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
                 samples=TUMOR_SAMPLES[0]
-        conda: "{PG2_HOME}/envs/bcftools.yaml"
+        conda: "envs/bcftools.yaml"
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 else:
     rule genome_00_MergeAllInputVCFs:
         input: vcfs=INPUT_VCF_GZ_FILES
         output: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="1", R="'rusage[mem=6]'", J="merge_input_vcfs", o="out/logs/merge_input_vcfs.out", eo="out/logs/merge_input_vcfs.err"
-        conda: "{PG2_HOME}/envs/bcftools.yaml"
+        conda: "envs/bcftools.yaml"
         shell: "picard MergeVcfs -Xmx6g \
             $(echo {input.vcfs} | sed -r 's/[^ ]+/INPUT=&/g') \
             OUTPUT={output.merged_vcf}"
     rule genome_01_CreateChrWiseCustomRef:
         input: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
-        conda: "{PG2_HOME}/envs/bcftools.yaml"
+        conda: "envs/bcftools.yaml"
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err",samples=ALL_INPUT_VCF_SAMPLES[1]
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.merged_vcf} > {output.fasta}"
 
@@ -110,19 +110,19 @@ rule genome_02b_LiftoverAnnotationGTF:
     input: chain="out/custom_ref/{cohort}_H{htype}.chain", vcf_refGtf=STOCK_GENOME_GTF
     output: "out/custom_ref/{cohort}_H{htype}.gtf"
     params: n="1", R="'rusage[mem=4]'", J="LiftoverGTF", o="out/logs/liftover.out", eo="out/logs/liftover.err"
-    conda: "{PG2_HOME}/envs/crossmap.yaml"
-    shell: "CrossMap.py gff {input.chain} {input.vcf_refGtf} | awk '\{print \"{wildcards.htype}_\" $0\}' > {output}"
+    conda: "envs/crossmap.yaml"
+    shell: "CrossMap.py gff {input.chain} {input.vcf_refGtf} | awk '{{print \"{wildcards.htype}_\" $0}}' > {output}"
 
 rule CreateRefSequenceIndex:
     input: STOCK_GENOME_FASTA
     output: STOCK_GENOME_FASTA+".fai"
     params: n="1", R="'span[hosts=1] rusage[mem=18]'", o="out/logs/create_refIdx.out", eo="out/logs/create_refDict.err", J="create_refIdx"
-    conda: "{PG2_HOME}/envs/bcftools.yaml"
+    conda: "envs/bcftools.yaml"
     shell: "samtools faidx {input}"
 
 rule CreateRefSequenceDict:
     input: STOCK_GENOME_FASTA
     output: STOCK_GENOME_FASTA.strip('fa')+'dict'
     params: n="1", R="'span[hosts=1] rusage[mem=18]'", o="out/logs/create_refDict.out", eo="out/logs/create_refDict.err", J="create_refDict"
-    conda: "{PG2_HOME}/envs/bcftools.yaml"
+    conda: "envs/bcftools.yaml"
     shell: "picard -Xmx16g CreateSequenceDictionary R={input} O={output}"

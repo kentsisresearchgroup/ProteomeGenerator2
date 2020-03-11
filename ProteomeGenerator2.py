@@ -91,7 +91,7 @@ rule RNA_00_STAR_CreateGenomeIndex:
     output: expand("out/custom_ref/{cohort}.h-{{htype}}.STARindex/SA",cohort=COHORT)
     benchmark: "out/benchmarks/h-{htype}.index.txt"
     log: "out/logs/h-{htype}.index.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=6]'", J="index", o="out/logs/index.out", eo="out/logs/index.err"
     shell: "mkdir -p {params.directory} ; \
             {STAR_2_7_2d} \
@@ -105,7 +105,7 @@ rule RNA_01_STAR_AlignRNAReadsByRG:
     output: temp("out/haplotype-{htype}/RNAseq/alignment/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam")
     benchmark: "out/benchmarks/h-{htype}.{sample}.{readgroup}.STAR.json"
     log: "out/logs/h-{htype}.{sample}.{readgroup}.STAR.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: directory=os.path.dirname(PG2_STAR_INDEX), n="24", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR.out", eo="out/logs/STAR.err"
     shell: "{STAR_2_7_2d} \
         --genomeDir {params.directory} \
@@ -142,7 +142,7 @@ rule RNA_02_FilterLowQualityReads:
     output: temp("out/haplotype-{htype}/RNAseq/alignment/{sample}.{readgroup}.Aligned.trimmed.out.bam")
     benchmark: "out/benchmarks/h-{htype}.{sample}.{readgroup}.filter.txt"
     log: "out/logs/h-{htype}.{sample}.{readgroup}.filter.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="filter", o="out/logs/filter.out", eo="out/logs/filter.err"
     shell: "samtools view -b -h -F 4 -F 256 -F 512 -q 30 {input.bam} > {output} 2> {log}"
 
@@ -150,7 +150,7 @@ rule RNA_03_MergeRGsPerSample:
     input: lambda wildcards: expand("out/haplotype-{{htype}}/RNAseq/alignment/{{sample}}.{readgroup}.Aligned.trimmed.out.bam", readgroup=config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'].keys())
     output: "out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bam"
     log: "out/logs/h-{htype}.{sample}.MergeRGs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="mergeRGs", o="out/logs/merRGs.out", eo="out/logs/mergeRGs.err"
     shell: "samtools merge {output} {input}"
 
@@ -159,7 +159,7 @@ rule RNA_04_IndexBAMPerSample:
     input: "out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bam"
     output: "out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bai"
     log: "out/logs/h-{htype}.{sample}.BuildBamIndex.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="BuildBamIndex", o="out/logs/BuildBamIndex.out", eo="out/logs/BuildBamIndex.err"
     shell: "picard \
             BuildBamIndex \
@@ -171,7 +171,7 @@ transcriptome_assembly_mode = config['user_defined_workflow']['RNA-seq_module'][
 rule RNA_05_trscrpt_AssembleWithStringTie_guided:
     input: bam="out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bam", bai="out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bai",gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
     output: transcriptome="out/haplotype-{htype}/transcriptome/{sample}.StringTie_guided.gtf",covered_refs="out/haplotype-{htype}/transcriptome/{sample}.StringTie_covRefs.gtf"
-    conda: "{PG2_HOME}/envs/stringtie.yaml"
+    conda: "envs/stringtie.yaml"
     params: n="8", R="'span[hosts=1]'", J="StringTie", o="out/logs/StringTie_guided.out", eo="out/logs/StringTie_guided.err"
     shell: "stringtie {input.bam} -p {params.n} -o {output.transcriptome} \
                   -G {input.gtf} -C {output.covered_refs} \
@@ -181,7 +181,7 @@ if transcriptome_assembly_mode == 'denovo':
     rule RNA_05_trscrpt_AssembleWithStringTie_denovo:
         input: bam="out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bam", bai="out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bai"
         output: transcriptome="out/haplotype-{htype}/transcriptome/{sample}.StringTie_denovo.gtf"
-        conda: "{PG2_HOME}/envs/stringtie.yaml"
+        conda: "envs/stringtie.yaml"
         params: n="8", R="'span[hosts=1]'", J="StringTie", o="out/logs/StringTie_denovo.out", eo="out/logs/StringTie_denovo.err"
         shell: "stringtie {input.bam} -p {params.n} -o {output.transcriptome} \
                   -c 2.5 -m {nuc_ORF} -f 0.01"
@@ -196,7 +196,7 @@ rule RNA_07_trscrpt_MergeSampleWiseTranscriptomes:
     input: sample_transcriptome=expand("out/haplotype-{{htype}}/transcriptome/{sample}.StringTie_{mode}.gtf",sample=RNA_SAMPLES,mode=transcriptome_assembly_mode), gtf_subset="out/haplotype-{htype}/transcriptome/gtf_subset.covRefsOnly.gtf"
     output: "out/haplotype-{htype}/transcriptome/transcriptome.gtf"
     log: "out/logs/h-{htype}.merge.txt"
-    conda: "{PG2_HOME}/envs/stringtie.yaml"
+    conda: "envs/stringtie.yaml"
     params: n="8", R="'span[hosts=1]'", J="merge", o="out/logs/merge.out", eo="out/logs/merge.err"
     shell: "stringtie --merge -o {output} -p {params.n} \
                 -c 2.5 -m {nuc_ORF} -T 1 -f 0.01 -i \
@@ -209,7 +209,7 @@ if 'genome' in TRACKS:
         input: gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
         output: temp("out/haplotype-{htype}/genome/genome.gtf")
         log: "out/logs/h-{htype}.merge.txt"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="8", R="'span[ptile=4]'", J="merge", o="out/logs/merge.out", eo="out/logs/merge.err"
         run:
             command = "stringtie --merge -o {output} -p {params.n} \
@@ -226,7 +226,7 @@ rule main_01_ExtractCdnaSequences:
         gtf="out/haplotype-{htype}/{track}/transcripts.gtf"
     benchmark: "out/benchmarks/h-{htype}.{track}.gtf_file_to_cDNA_seqs.txt"
     log: "out/logs/h-{htype}.{track}.gtf_file_to_cDNA_seqs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="gtf_file_to_cDNA_seqs", o="out/logs/gtf_file_to_cDNA_seqs.out", eo="out/logs/gtf_file_to_cDNA_seqs.err"
     shell: "gffread {input.gtf} -T -o {output.gtf} \
         --no-pseudo \
@@ -239,7 +239,7 @@ rule main_01a_GTFtoAlignmentGFF3:
     output: "out/haplotype-{htype}/{track}/transcripts.gff3"
     benchmark: "out/benchmarks/h-{htype}.{track}.gtf_to_alignment_gff3.txt"
     log: "out/logs/h-{htype}.{track}.gtf_to_alignment_gff3.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="gtf_to_alignment_gff3", o="out/logs/gtf_to_alignment_gff3.out", eo="out/logs/gtf_to_alignment_gff3.err"
     shell: "perl {PG2_HOME}/utils/transdecoder/util/gtf_to_alignment_gff3.pl {input} > {output} 2> {log}"
 
@@ -248,7 +248,7 @@ rule main_02_ORF_CalculateCandidateORFs:
     output: "out/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir/longest_orfs.pep",checkpoint_dir=directory("out/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir.__checkpoints_longorfs/")
     benchmark: "out/benchmarks/h-{htype}.{track}.LongOrfs.json"
     log: "../../logs/h-{htype}.{track}.LongOrfs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="LongOrfs", o="out/logs/LongOrfs.out", eo="out/logs/LongOrfs.err"
     shell: "rm -r {output.checkpoint_dir}; cd out/haplotype-{wildcards.htype}/{wildcards.track}; \
         TransDecoder.LongOrfs \
@@ -261,7 +261,7 @@ rule main_02a_ORF_MakeBlastDB:
     output: [PGM_DBNAME+'.pin', PGM_DBNAME+'.phr', PGM_DBNAME+'.psq']
     benchmark: "out/benchmarks/makeblastdb.json"
     log: "out/logs/makeblastdb.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="makeblastdb", o="out/logs/makeblastdb.out", eo="out/logs/makeblastdb.err"
     shell: "makeblastdb \
         -in {input.fasta} \
@@ -273,7 +273,7 @@ rule main_02b_ORF_BLASTpForHomologyScore:
     output: "out/haplotype-{htype}/{track}/blastp.outfmt6"
     benchmark: "out/benchmarks/h-{htype}.{track}.blastp.json"
     log: "out/logs/h-{htype}.{track}.blastp.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="18", R="'span[ptile=18] rusage[mem=4]'", J="blastp", o="out/logs/blastp.out", eo="out/logs/blastp.err"
     shell: "blastp \
         -num_threads {params.n} \
@@ -291,7 +291,7 @@ rule main_03_ORF_PredictCodingRegions:
     output: "out/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.pep",checkpoint_dir=directory("out/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir.__checkpoints/"),gff3="out/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.gff3"
     benchmark: "out/benchmarks/h-{htype}.{track}.Predict.json"
     log: "../../logs/h-{htype}.{track}.Predict.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=18]'", J="Predict", o="out/logs/Predict.out", eo="out/logs/Predict.err"
     shell: "rm -r {output.checkpoint_dir};cd out/haplotype-{wildcards.htype}/{wildcards.track}; TransDecoder.Predict \
         -t transcripts.fasta \
@@ -307,7 +307,7 @@ rule main_04_GenerateCDSinGenomeCoords:
     output: "out/haplotype-{htype}/{track}/transcripts.genome.gff3"
     benchmark: "out/benchmarks/h-{htype}.{track}.cdna_alignment_orf_to_genome_orf.txt"
     log: "out/logs/h-{htype}.{track}.cdna_alignment_orf_to_genome_orf.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=16]'", J="cdna_alignment_orf_to_genome_orf", o="out/logs/cdna_alignment_orf_to_genome_orf.out", eo="out/logs/cdna_alignment_orf_to_genome_orf.err"
     shell: "perl {PG2_HOME}/utils/transdecoder/util/cdna_alignment_orf_to_genome_orf.pl {input.gff3_td} {input.gff3} {input.fasta_td} > {output} 2> {log}"
 
@@ -320,7 +320,7 @@ if not incorporatingSomaticVariants:
         output: "out/haplotype-{htype}/{track}/proteome.fasta"
         benchmark: "out/benchmarks/h-{htype}.{track}.gff3_file_to_proteins.txt"
         log: "out/logs/h-{htype}.{track}.gff3_file_to_proteins.txt"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="2", R="'rusage[mem=8]'", J="gff3_file_to_proteins", o="out/logs/gff3_file_to_proteins.out", eo="out/logs/gff3_file_to_proteins.err"
         shell: "cat {input.gff3} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_proteins.pl --gff3 /dev/stdin --fasta {input.ref_fasta} | egrep -o '^[^*]+' > {output} 2> {log}"
 else:
@@ -341,7 +341,7 @@ else:
         output: "out/haplotype-{htype}/{track}/proteome.main.fasta"
         benchmark: "out/benchmarks/h-{htype}.{track}.gff3_file_to_proteins.txt"
         log: "out/logs/h-{htype}.{track}.gff3_file_to_proteins.txt"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="2", R="'rusage[mem=8]'", J="gff3_file_to_proteins", o="out/logs/gff3_file_to_proteins.out", eo="out/logs/gff3_file_to_proteins.err"
         shell: "cat {input.gff3} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_proteins.pl --gff3 /dev/stdin --fasta {input.ref_fasta} | egrep -o '^[^*]+' > {output} 2> {log}"
 	
@@ -350,7 +350,7 @@ else:
         output: "out/haplotype-{htype}/{track}/proteome.expanded.fasta"
         benchmark: "out/benchmarks/h-{htype}.{track}.gff3_file_to_proteins.txt"
         log: "out/logs/h-{htype}.{track}.gff3_file_to_proteins.txt"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="2", R="'rusage[mem=8]'", J="gff3_file_to_proteins", o="out/logs/gff3_file_to_proteins.out", eo="out/logs/gff3_file_to_proteins.err"
         shell: "samtools faidx {input.ref_fasta}; cat {input.gff3} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_proteins.pl --gff3 /dev/stdin --fasta {input.ref_fasta} | egrep -o '^[^*]+' > {output} 2> {log}"
 
@@ -366,7 +366,7 @@ rule remove_duplicate_proteome_entries:
     output: "out/haplotype-{htype}/{track}/proteome.unique.fasta"
     benchmark: "out/benchmarks/h-{htype}.{track}.reorderFASTA.txt"
     log: "out/logs/h-{htype}.{track}.reorderFASTA.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="reorderFASTA", o="out/logs/reorderFASTA.out", eo="out/logs/reorderFASTA.err", wd=WD
     script: "{PG2_HOME}/scripts/reorderFASTA.R"
 
@@ -375,7 +375,7 @@ rule main_06_MergeAllProteomeTracksAndRemoveDups:
     output: "out/combined.proteome.unique.fasta"
     benchmark: "out/benchmarks/combine_FASTAs.txt"
     log: "out/logs/combine_FASTAs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     script:"{PG2_HOME}/scripts/reorderFASTA.R"
 
@@ -384,7 +384,7 @@ rule combine_assembly_tracks:
     output: "out/combined.assembly.proteome.unique.fasta"
     benchmark: "out/benchmarks/combine_FASTAs.txt"
     log: "out/logs/combine_FASTAs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     script:"{PG2_HOME}/scripts/reorderFASTA.R"
 
@@ -393,7 +393,7 @@ rule re_reorderFASTA:
     output: "out/combined.concat_re-reordered.proteome.unique.fasta"
     benchmark: "out/benchmarks/combine_FASTAs.txt"
     log: "out/logs/combine_FASTAs.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     script:"{PG2_HOME}/scripts/reorderFASTA.R"
 
@@ -405,7 +405,7 @@ rule gff3_file_to_bed:
     output: "out/haplotype-{htype}/{track}/proteome_temp.bed"
     benchmark: "out/benchmarks/h-{htype}.{track}.gff3_file_to_bed.txt"
     log: "out/logs/h-{htype}.{track}.gff3_file_to_bed.txt"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=8]'", J="gff3_file_to_bed", o="out/logs/gff3_file_to_bed.out", eo="out/logs/gff3_file_to_bed.err"
     shell: "cat {input} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_bed.pl /dev/stdin | tail -n +2 > {output} 2> {log}"
 
@@ -420,7 +420,7 @@ if creating_custom_genome:
     rule liftOver_bed_coords:
         input: bed="out/haplotype-{htype}/{track}/proteome_temp.bed", chain="out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
         output: "out/haplotype-{htype}/{track}/proteome.bed"
-        conda: "{PG2_HOME}/envs/myenv.yaml"
+        conda: "envs/myenv.yaml"
         params: n="1", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/h-{htype}.{track}.liftOver_bed.err"
         shell: "liftOver {input.bed} {input.chain} {output} {output}.unmapped"
 else:
@@ -433,7 +433,7 @@ else:
 rule merge_lifted_bedFiles:
     input: expand("out/haplotype-{htype}/{track}/proteome.bed",htype=HAPLOTYPES,track=TRACKS)
     output: "out/combined.proteome.bed"
-    conda: "{PG2_HOME}/envs/myenv.yaml"
+    conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="merge_proteome_bed", o="out/logs/merge_proteome_bed.out", eo="out/logs/merge_proteome_bed.err"
     shell: "cat {input} | sort -k1,1 -k2,2n > {output}"
 

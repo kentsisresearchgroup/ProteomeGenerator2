@@ -61,7 +61,7 @@ rule var_00_ScatterVariantCallingIntervals:
 
 if (not just_ran_WGS_preprocessing) and running_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai")
+        input: bam=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai")
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
@@ -72,7 +72,7 @@ if (not just_ran_WGS_preprocessing) and running_preprocessing:
 
 elif just_ran_WGS_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_mates-fixed_dedup_fixedtags_BQSR.analysis_ready.bai"
+        input: bam="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
         output: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",bai="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
@@ -129,7 +129,7 @@ rule var_germ_03_CNN2D_ScoreVariants:
     output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/intervals/score_variants_{interval}.out", eo="out/logs/intervals/score_variants_{interval}.err", \
-        J="score_variants"
+        J="score_variants_{interval}"
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
     shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} -L {input.interval_list} --tensor-type read_tensor"
 
@@ -159,37 +159,47 @@ rule var_germ_05_FilterNonpassingGermlineVariants:
 
 rule var_germ_06_MergeIntervalWiseVCFs:
     input: expand("out/WGS/variant_calling/{{tumor_or_normal}}/HTC-scattered/{{sample}}.HTC.{interval}.CNN-scored.tranched.filtered.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
-    output: "out/WGS/variant_calling/{tumor_or_normal}/{sample}.germline_finished.vcf.gz"
+    output: "out/WGS/variant_calling/{tumor_or_normal}/{sample}.germline_finished.vcf"
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
     conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
-rule var_germ_07t_MergeTumorSampleGermlineVCFs:
-    input: expand("out/WGS/variant_calling/tumor/{sample}.germline_finished.vcf.gz",sample=TUMOR_SAMPLES)
-    output: "out/WGS/variant_calling/tumor/tumor.germline_finished.vcf.gz"
+rule var_germ_06b_ConsolidateSampleNamesForMerge:
+    input: "out/WGS/variant_calling/{tumor_or_normal}/{sample}.germline_finished.vcf"
+    output: temp("out/WGS/variant_calling/{tumor_or_normal}/{sample}.germline_finished.name_consolidated.vcf.gz"),name_txt=temp("out/WGS/variant_calling/{tumor_or_normal}/{sample}.cohort_name.txt")
     params: n="1", R="'span[hosts=1]'", \
-        o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
-        J="merge_vcfs"
-    conda: "envs/gatk4.yaml"
-    shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
+        o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
+        J="consolidate_names",int_vcf="out/WGS/variant_calling/{tumor_or_normal}/{sample}.germline_finished.name_consolidated.vcf"
+    conda: "envs/bcftools.yaml"
+    shell: "echo '{COHORT}_{wildcards.tumor_or_normal}' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
+
+rule var_germ_07t_MergeTumorSampleGermlineVCFs:
+    input: expand("out/WGS/variant_calling/tumor/{sample}.germline_finished.name_consolidated.vcf.gz",sample=TUMOR_SAMPLES)
+    output: "out/WGS/variant_calling/tumor/{cohort}.tumor.germline_finished.vcf.gz"
+    params: n="1", R="'span[hosts=1]'", \
+        o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
+        J="merge_tumor_vcfs", int_vcf="out/WGS/variant_calling/tumor/{cohort}.tumor.germline_finished.vcf"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools concat -a -D {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
+    #shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_germ_07n_MergeNormalSampleGermlineVCFs:
     input: expand("out/WGS/variant_calling/normal/{sample}.germline_finished.vcf.gz",sample=NORMAL_SAMPLES)
-    output: "out/WGS/variant_calling/normal/normal.germline_finished.vcf.gz"
+    output: "out/WGS/variant_calling/normal/{cohort}.normal.germline_finished.vcf.gz"
     params: n="1", R="'span[hosts=1]'", \
-        o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
-        J="merge_vcfs"
-    conda: "envs/gatk4.yaml"
-    shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
+        o="out/logs/merge_normal_vcfs.out", eo="out/logs/merge_normal_vcfs.err", \
+        J="merge_normal_vcfs"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools concat -a -D {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
+    #shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 
 ## PINDEL RULES ##
 
 rule CreatePindelConfigFile:
     input: ANALYSIS_READY_BAMFILES
-    #input: expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES), expand("out/WGS/variant_calling/normal/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES)
     output: "out/WGS/variant_calling/pindel/pindel_config_file.txt"
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/create_pindel_configfile.out", eo="out/logs/create_pindel_configfile.err", \
@@ -231,7 +241,7 @@ GNOMAD_AF=config['parameters']['genome_personalization_module']['variant_calling
 if NORMAL_SAMPLES is not None:
     rule var_som_01_Mutect2_matched_tumor_normal:
         input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/WGS/variant_calling/normal/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/WGS/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
-        output: vcf=temp("out/WGS/variant_calling/cohort/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/WGS/variant_calling/cohort/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
+        output: vcf=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
         params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
             J="mutect2_matched"
@@ -316,6 +326,9 @@ rule var_som_04_ReformatMutectVCF:
                 tsv = line.split('\t')
                 tsv = tsv[0:len(tsv)-2] + [tsv[len(tsv)-1]]
                 open(output[0],'a').write('\t'.join(tsv))
+
+#rule var_som_05_MergeTumorSampleMutectVCFs:
+#    input: "out/WGS/variant_calling/tumor/{sample}.
 
 rule var_z_MergeFinishedTumorVCFs:
     input: ["out/WGS/variant_calling/cohort/{cohort}.somatic_finished.vcf","out/WGS/variant_calling/tumor/merged.germline_finished.vcf.gz"]
