@@ -18,3 +18,4 @@ dependencies:
  - crossmap=0.3.5
  - ucsc-liftover=377
  - samtools=1.9
+ - dfam

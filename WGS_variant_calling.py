@@ -48,6 +48,7 @@ subworkflow WGS_preprocessing:
 snakemake.utils.makedirs('out/logs/intervals')
 snakemake.utils.makedirs('out/logs/variant_calling')
 snakemake.utils.makedirs('out/logs/variant_calling/chr-wise')
+snakemake.utils.makedirs('out/logs/variant_calling/intervals')
 NUM_VARIANT_INTERVALS = config['parameters']['genome_personalization_module']['variant_calling']['advanced']['variant_intervals_scatter']
 rule var_00_ScatterVariantCallingIntervals:
     input: config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions']
@@ -95,7 +96,7 @@ else:
 
 rule var_germ_01_CallGermlineVariantsPerInterval:
     input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam", interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
-    output: temp("out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf")
+    output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf"
     params: n="4", R="'span[hosts=1] rusage[mem=3]'", \
         o="out/logs/intervals/vcf_{interval}.out", eo="out/logs/intervals/vcf_{interval}.err", \
         J="generate_vcf_{interval}"
@@ -104,7 +105,7 @@ rule var_germ_01_CallGermlineVariantsPerInterval:
 
 rule var_germ_02_GenotypeTumorSamplePerInterval:
     input: gvcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf", interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
-    output: temp("out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf")
+    output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf"
     params: n="2", R="'span[hosts=1] rusage[mem=32]'", \
         o="out/logs/intervals/genotype_gvcfs_{interval}.out", eo="out/logs/intervals/genotype_gvcfs_{interval}.err", \
         J="genotype_gvcfs"
@@ -113,16 +114,16 @@ rule var_germ_02_GenotypeTumorSamplePerInterval:
               -V {input.gvcf} -L {input.interval_list} -O {output}"
 
 """
-rule var_germ_03_MergeIntervalWiseGenotypedVCFs:
-    input: expand("out/WGS/variant_calling/tumor/HTC-scattered/{{sample}}.HTC.{interval}.genotyped.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
-    output: "out/WGS/variant_calling/tumor/{sample}.HTC.genotyped.vcf"
-    params: n="1", R="'span[hosts=1] rusage[mem=16]'", \
-        o="out/logs/merge_gvcfs.out", eo="out/logs/merge_gvcfs.err", \
-        J="merge_gvcfs"
-    conda: "envs/gatk4.yaml"
-    shell: "picard MergeVcfs -Xmx16g $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
-"""
+rule var_germ_03_CNN1D_ScoreVariants:
+    input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
+    output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
+    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+        o="out/logs/intervals/score_variants_{interval}.out", eo="out/logs/intervals/score_variants_{interval}.err", \
+        J="score_variants_{interval}"
+    singularity: "docker://broadinstitute/gatk:4.1.4.1"
+    shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -V {input.vcf} -O {output} -L {input.interval_list}"
 
+"""
 
 rule var_germ_03_CNN2D_ScoreVariants:
     input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
@@ -137,16 +138,14 @@ HAPMAP=config['parameters']['genome_personalization_module']['variant_calling'][
 MILLS=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
 SNP_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']
 INDEL_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['indel_tranche']
-#TRANCHE_DICT={'SNP':str(config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']),'INDEL':str(config['parameters']['genome_personalization_module']['variant_calling'['advanced']]['indel_tranche'])}
 rule var_germ_04_AssignVariantTranches:
     input: vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
     output: temp("out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz")
     params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
         J="assign_tranches"
-        #snp_tranche=str(TRANCHE_DICT['SNP']), indel_tranche=str(TRANCHE_DICT['INDEL'])
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
+    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_1D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
 
 rule var_germ_05_FilterNonpassingGermlineVariants:
     input: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz"
@@ -175,7 +174,7 @@ rule var_germ_06b_ConsolidateSampleNamesForMerge:
     conda: "envs/bcftools.yaml"
     shell: "echo '{COHORT}_{wildcards.tumor_or_normal}' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
 
-rule var_germ_07t_MergeTumorSampleGermlineVCFs:
+rule var_germ_07t_CombineTumorSampleGermlineVCFs:
     input: expand("out/WGS/variant_calling/tumor/{sample}.germline_finished.name_consolidated.vcf.gz",sample=TUMOR_SAMPLES)
     output: "out/WGS/variant_calling/tumor/{cohort}.tumor.germline_finished.vcf.gz"
     params: n="1", R="'span[hosts=1]'", \
@@ -242,11 +241,11 @@ if NORMAL_SAMPLES is not None:
     rule var_som_01_Mutect2_matched_tumor_normal:
         input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/WGS/variant_calling/normal/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/WGS/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
         output: vcf=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
-        params: n="2", R="'span[hosts=1] rusage[mem=4]'", \
-            o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
+        params: n="8", R="'span[hosts=1] rusage[mem=4]'", \
+            o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_matched"
         conda: "envs/gatk4.yaml"
-        shell: "gatk --java-options -Xmx8g Mutect2 -R {input.ref} -O {output.vcf} \
+        shell: "gatk --java-options '-Xmx32g' Mutect2 -R {input.ref} -O {output.vcf} \
                   $(echo '{input.tumor}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{input.normal}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{NORMAL_SAMPLES}' | sed -r 's/[^ ]+/-normal &/g') \
@@ -256,16 +255,16 @@ if NORMAL_SAMPLES is not None:
 else:
     rule var_som_01_Mutect2_without_matched_normal:
         input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/WGS/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
-        output: vcf="out/WGS/variant_calling/cohort/Mutect2-scattered/{cohort}..mutect2.{interval}.vcf",stats="out/WGS/variant_calling/cohort/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats"
-        params: n="24", R="'span[hosts=1] rusage[mem=4'", \
+        output: vcf="out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}..mutect2.{interval}.vcf",stats="out/WGS/variant_calling/cohort/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats"
+        params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
             J="mutect2_unmatched"
         conda: "envs/gatk4.yaml"
-        shell: "gatk --java-options -Xmx96g Mutect2 -R {input.ref} -I {input.sample} -tumor {TUMOR_SAMPLES} --germline-resource {input.gnomad_af} -L {input.interval_list}"
+        shell: "gatk --java-options '-Xmx16g' Mutect2 -R {input.ref} -I {input.sample} -tumor {TUMOR_SAMPLES} --germline-resource {input.gnomad_af} -L {input.interval_list}"
 
 rule var_som_02_MergeScatteredMutect2VCFs:
-    input: vcf=expand("out/WGS/variant_calling/cohort/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
-    output: "out/WGS/variant_calling/cohort/{cohort}.mutect2.vcf"
+    input: vcf=expand("out/WGS/variant_calling/tumor/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
+    output: "out/WGS/variant_calling/tumor/{cohort}.mutect2.vcf"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_somatic.out", eo="out/logs/merge_somatic.err", \
             J="merge_somatic"
@@ -275,8 +274,8 @@ rule var_som_02_MergeScatteredMutect2VCFs:
               O={output}"
 
 rule var_som_02a_MergeScatteredMutect2Stats:
-    input: stats=expand("out/WGS/variant_calling/cohort/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf.stats",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
-    output: "out/WGS/variant_calling/cohort/{cohort}.mutect2.vcf.stats"
+    input: stats=expand("out/WGS/variant_calling/tumor/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf.stats",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
+    output: "out/WGS/variant_calling/tumor/{cohort}.mutect2.vcf.stats"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_mutect_stats.out", eo="out/logs/merge_mutect_stats.err", \
             J="merge_mutect_stats"
@@ -286,35 +285,84 @@ rule var_som_02a_MergeScatteredMutect2Stats:
 
 
 rule var_som_00a_GetTumorPileupSummaries:
-    input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),gnomad_af=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db'],intervals=config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions']
-    output: "out/WGS/variant_calling/cohort/{cohort}_tumor.pileup_summaries.table"
+    input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),gnomad_af=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db'],intervals=config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions'],ref_fasta=STOCK_GENOME_FASTA
+    output: "out/WGS/variant_calling/tumor/{cohort}_tumor.pileup_summaries.table"
     params: n="16", R="'span[hosts=1] rusage[mem=2]'", \
         o="out/logs/get_pileup_summaries.out", eo="out/logs/get_pileup_summaries.err", \
         J="get_pileup_summaries"
     conda: "envs/gatk4.yaml"
-    shell: "gatk --java-options -Xmx32g GetPileupSummaries -I {input.tumor} -V {input.gnomad_af} -L {input.intervals} -O {output}"
+    shell: "gatk --java-options -Xmx32g GetPileupSummaries -R {input.ref_fasta} \
+                $(echo '{input.tumor}' | sed -r 's/[^ ]+/-I &/g') \
+                -V {input.gnomad_af} -L {input.intervals} -O {output}"
 
 rule var_som_00b_CalculateContamination:
-    input: "out/WGS/variant_calling/cohort/{cohort}_tumor.pileup_summaries.table"
-    output: "out/WGS/variant_calling/cohort/{cohort}_tumor.contamination.table"
+    input: "out/WGS/variant_calling/tumor/{cohort}_tumor.pileup_summaries.table"
+    output: "out/WGS/variant_calling/tumor/{cohort}_tumor.contamination.table"
     params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/calculate_contamination.out", eo="out/logs/calculate_contamination.err", \
         J="calculate_contamination"
     conda: "envs/gatk4.yaml"
     shell: "gatk --java-options -Xmx32g CalculateContamination -I {input} -O {output}"
 
-rule var_som_03_FilterMutectCalls:
-    input: vcf="out/WGS/variant_calling/cohort/{cohort}.mutect2.vcf",contam_table="out/WGS/variant_calling/cohort/{cohort}_tumor.contamination.table",stats="out/WGS/variant_calling/cohort/{cohort}.mutect2.vcf.stats",ref=STOCK_GENOME_FASTA
-    output: "out/WGS/variant_calling/cohort/{cohort}.mutect2.filtered.vcf"
-    params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
+rule var_som_03_ScoreVariantsWithFilterMutectCalls:
+    input: vcf="out/WGS/variant_calling/tumor/{cohort}.mutect2.vcf",contam_table="out/WGS/variant_calling/tumor/{cohort}_tumor.contamination.table",stats="out/WGS/variant_calling/tumor/{cohort}.mutect2.vcf.stats",ref=STOCK_GENOME_FASTA
+    output: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.vcf.gz"
+    params: n="1", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/filter_mutect2.out", eo="out/logs/filter_mutect2.err", \
         J="filter_mutect2"
     conda: "envs/gatk4.yaml"
-    shell: "gatk --java-options -Xmx32g FilterMutectCalls -V {input.vcf} -R {input.ref} --contamination-table {input.contam_table} -stats {input.stats} -O {output}" 
+    shell: "gatk --java-options -Xmx16g FilterMutectCalls -V {input.vcf} -R {input.ref} --contamination-table {input.contam_table} -stats {input.stats} -O {output}" 
 
-rule var_som_04_ReformatMutectVCF:
-    input: "out/WGS/variant_calling/cohort/{cohort}.mutect2.filtered.vcf"
-    output: "out/WGS/variant_calling/cohort/{cohort}.somatic_finished.vcf"
+rule var_som_04_FilterNonPassingSomaticVariants:
+    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.vcf.gz"
+    output: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.vcf"
+    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+        o="out/logs/filter_somatic.out", eo="out/logs/filter_somatic.err", \
+        J="filter_somatic"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools view -f PASS {input} > {output}"
+
+rule var_som_05_SeparatePassingSomaticVariantsBySample:
+    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.vcf"
+    output: expand("out/WGS/variant_calling/tumor/{{cohort}}.mutect2.scored.filtered.{sample}.vcf.gz",sample=TUMOR_SAMPLES)
+    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+        o="out/logs/variant_calling/somatic_separate_bySample.out", eo="out/logs/somatic_separate_bySample.err", \
+        J="somatic_filter+separate"
+    conda: "envs/gatk4.yaml"
+    shell: "for s in {TUMOR_SAMPLES}; do gatk --java-options -Xmx4g SelectVariants --sample-name $s --variant {input} --output out/WGS/variant_calling/tumor/{COHORT}.mutect2.scored.filtered.$s.vcf.gz; done"
+
+"""
+rule var_som_06_ConsolidateSampleNamesForMerge:
+    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.vcf.gz"
+    output: temp("out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz"),name_txt=temp("out/WGS/variant_calling/tumor/{sample}.cohort_name.{cohort}.txt")
+    params: n="1", R="'span[hosts=1]'", \
+        o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
+        J="consolidate_names",int_vcf="out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf"
+    conda: "envs/bcftools.yaml"
+    shell: "echo '{COHORT}_tumor' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
+"""
+rule var_som_06_ConsolidateSampleNamesForMerge:
+    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.vcf.gz"
+    output: vcf=temp("out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz"),name_txt=temp("out/WGS/variant_calling/tumor/{sample}.cohort_name.{cohort}.txt"),idx=temp("out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi")
+    params: n="1", R="'span[hosts=1]'", \
+        o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
+        J="consolidate_names",int_vcf="out/WGS/variant_calling/tumor/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf"
+    conda: "envs/bcftools.yaml"
+    shell: "echo '{COHORT}_tumor' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {output.vcf}; tabix -p vcf {output.vcf}"
+
+rule var_som_07_CombineSomaticVCFs:
+    input: vcf=expand("out/WGS/variant_calling/tumor/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz",sample=TUMOR_SAMPLES),idx=expand("out/WGS/variant_calling/tumor/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi",sample=TUMOR_SAMPLES)
+    output: "out/WGS/variant_calling/tumor/{cohort}.somatic_finished.vcf.gz"
+    params: n="1", R="'span[hosts=1]'", \
+        o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
+        J="merge_tumor_vcfs", int_vcf="out/WGS/variant_calling/tumor/{cohort}.somatic_finished.vcf"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools concat -a -D {input.vcf} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
+
+"""
+rule var_som_05_ReformatMutectVCF:
+    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.filtered.vcf"
+    output: "out/WGS/variant_calling/tumor/{cohort}.somatic_finished.vcf"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/reformat_mutect_vcf.out", eo="out/logs/reformat_mutect_vcf.err", \
             J="reformat_mutect_vcf"
@@ -326,19 +374,18 @@ rule var_som_04_ReformatMutectVCF:
                 tsv = line.split('\t')
                 tsv = tsv[0:len(tsv)-2] + [tsv[len(tsv)-1]]
                 open(output[0],'a').write('\t'.join(tsv))
-
-#rule var_som_05_MergeTumorSampleMutectVCFs:
-#    input: "out/WGS/variant_calling/tumor/{sample}.
+"""
 
 rule var_z_MergeFinishedTumorVCFs:
-    input: ["out/WGS/variant_calling/cohort/{cohort}.somatic_finished.vcf","out/WGS/variant_calling/tumor/merged.germline_finished.vcf.gz"]
-    output: "out/WGS/variant_calling/cohort/{cohort}.tumor.variant_calling_finished.vcf.gz"
+    input: ["out/WGS/variant_calling/tumor/{cohort}.somatic_finished.vcf.gz","out/WGS/variant_calling/tumor/{cohort}.tumor.germline_finished.vcf.gz"]
+    output: "out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz"
     params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
     conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
+"""
 rule var_z_FinishedNormalVCF:
     input: "out/WGS/variant_calling/normal/normal.germline_finished.vcf.gz"
     output: "out/WGS/variant_calling/cohort/{cohort}.normal.variant_calling_finished.vcf.gz"
@@ -350,4 +397,4 @@ rule var_z_FinishedNormalVCF:
         out_path = os.path.abspath(output[0])
         command = "ln -s {} {}".format(in_path, out_path)
         shell(command)
-
+"""

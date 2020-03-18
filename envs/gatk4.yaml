@@ -6,7 +6,7 @@ channels:
   - conda-forge
 dependencies:
   - picard=2.18.21=0
-  - gatk4=4.1.4.1
+  - gatk4=4.1.5.0
   - bzip2=1.0.6=h14c3975_5
   - openjdk=8.0.152=h46b5887_1
   - perl=5.26.2=h14c3975_0

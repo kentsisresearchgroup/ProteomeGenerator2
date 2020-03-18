@@ -36,12 +36,14 @@ creating_custom_genome = config['user_defined_workflow']['genome_personalization
 RNA_seq_module_enabled = config['user_defined_workflow']['RNA-seq_module']['enable_RNA-seq_module']
 
 continuing_after_genome_personalization = config['user_defined_workflow']['genome_personalization_module']['continuation']['just_created_custom_genome']
+assert not (creating_custom_genome and continuing_after_genome_personalization), "The genome personalization module and 'just created custom genome' flag (i.e. already ran genome personalization) are both true. Please disable at least one in the configuration file"
 
 HAPLOTYPES = [1,2] if (config['parameters']['genome_personalization_module']['variant_calling']['make_customRef_diploid'] and (creating_custom_genome or continuing_after_genome_personalization)) else [1] # haplotype number determines number of parallelized runs
 
 # The transcriptome, genome annotation, and/or gene fusion tracks are merged at the end to comprise the proteome
 TRACKS=[]
 if RNA_seq_module_enabled:
+    RNAseq_file_format = config['input_files']['RNA-seq_module']['input_file_format']
     if config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['assemble_transcriptome_with_StringTie']:
         TRACKS.append('transcriptome')
     if config['user_defined_workflow']['RNA-seq_module']['gene_fusion_track']['assemble_fusion_genes_with_STAR-Fusion']:
@@ -100,8 +102,16 @@ rule RNA_00_STAR_CreateGenomeIndex:
             --genomeDir {params.directory} --sjdbGTFfile {input.gtf} --sjdbOverhang 100 --genomeSuffixLengthMax 1000 \
             --genomeFastaFiles {input.fasta} 2> {log}"
 
+if RNA_seq_module_enabled and RNAseq_file_format == 'bam':
+    rule RNA_00_ExtractFastqReadsFromRNAseqBAM:
+        input: config['input_files']['RNA-seq_module']['bam_inputs'][wildcards.sample]['bam_file']
+        output: read_one=temp("out/haplotype-{htype}/RNAseq/alignment/{sample}.RG.bam2fq.1.fq"),read_two=temp("out/haplotype-{htype}/RNAseq/alignment/{sample}.RG.bam2fq.2.fq")
+        conda: "envs/myenv.yaml"
+        params: n="16", R="'span[hosts=1] rusage[mem=6]'", J="RNAseq_bam2fq", o="out/logs/RNAseq/bam2fq.out", eo="out/logs/RNAseq/bam2fq.err"
+        shell: "picard SamToFastq -Xmx32g I={input.ubam_file} FASTQ={output.fq1} SECOND_END_FASTQ={output.fq2}"
+
 rule RNA_01_STAR_AlignRNAReadsByRG:
-    input: PG2_STAR_INDEX, read_one =lambda wildcards: config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'], read_two=lambda wildcards: config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz'], gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+    input: PG2_STAR_INDEX, read_one ="out/haplotype-{htype}/RNAseq/alignment/{sample}.{readgroup}.bam2fq.1.fq" if RNAseq_file_format == 'bam' else lambda wildcards: config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'], read_two="out/haplotype-{htype}/RNAseq/alignment/{sample}.{readgroup}.bam2fq.2.fq" if RNAseq_file_format == 'bam' else lambda wildcards: config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz'], gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
     output: temp("out/haplotype-{htype}/RNAseq/alignment/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam")
     benchmark: "out/benchmarks/h-{htype}.{sample}.{readgroup}.STAR.json"
     log: "out/logs/h-{htype}.{sample}.{readgroup}.STAR.txt"
@@ -115,7 +125,6 @@ rule RNA_01_STAR_AlignRNAReadsByRG:
         --outSAMattrRGline ID:{wildcards.readgroup} LB:1 PL:illumina PU:1 SM:{wildcards.sample} \
         --runThreadN {params.n} \
         --outSAMtype BAM SortedByCoordinate \
-        --clip3pAdapterSeq AGATCGGAAGAG \
         --readFilesCommand zcat \
         --twopassMode Basic \
         --outSAMstrandField intronMotif \
@@ -153,7 +162,6 @@ rule RNA_03_MergeRGsPerSample:
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="mergeRGs", o="out/logs/merRGs.out", eo="out/logs/mergeRGs.err"
     shell: "samtools merge {output} {input}"
-
 
 rule RNA_04_IndexBAMPerSample:
     input: "out/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.RG-merged.out.bam"
@@ -216,6 +224,26 @@ if 'genome' in TRACKS:
                           -G {input.gtf}"
             shell(command)
 
+### Gene fusions ###
+rule RNA_00_fusion_BuildCTATGenomelib:
+    input: fasta=(create_custom_genome(PG2_GENOME_FASTA) if creating_custom_genome else PG2_GENOME_FASTA),gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+    output: "out/custom_ref/haplotype-{htype}/ctat_genome_lib_build_dir/h-{htype}.ref_genome.fa"
+    params: n="1", R="'span[hosts=1]'", J="build_fusion_lib", o="out/logs/build_fusion_lib.out", eo="out/logs/build_fusion_lib.err"
+    singularity: "docker://trinityctat/starfusion"
+    #conda: "envs/myenv.yaml"
+    shell: "cd out/custom_ref/haplotype-{wildcards.htype}/ctat_genome_lib_build_dir; perl {PG2_HOME}/utils/CTAT_genome_utils/prep_genome_lib.pl \
+                --outTmpDir {TMP} \
+                --genome_fa {input.fasta} --gtf {input.gtf} \
+                --fusion_annot_lib {PG2_HOME}/utils/CTAT_genome_utils/fusion_annot_lib.gz \
+                --annot_filter_rule {PG2_HOME}/utils/CTAT_genome_utils/AnnotFilterRule.pm \
+                --pfam_db current --dfam_db human --human_gencode_filter"
+    #shell: "cd out/custom_ref/haplotype-{wildcards.htype}/ctat_genome_lib_build_dir; perl {PG2_HOME}/utils/CTAT_genome_utils/prep_genome_lib.pl \
+    #            --output_dir out/custom_ref/haplotype-{wildcards.htype}/ctat_genome_lib_build_dir \
+    #            --outTmpDir {TMP} \
+    #            --genome_fa {input.fasta} --gtf {input.gtf} \
+    #            --fusion_annot_lib {PG2_HOME}/utils/CTAT_genome_utils/fusion_annot_lib.gz \
+    #            --annot_filter_rule {PG2_HOME}/utils/CTAT_genome_utils/AnnotFilterRule.pm \
+    #            --pfam_db current --dfam_db human --human_gencode_filter"
 
 ### Proteome Generation Workflow ###
 
@@ -377,7 +405,8 @@ rule main_06_MergeAllProteomeTracksAndRemoveDups:
     log: "out/logs/combine_FASTAs.txt"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
-    script:"{PG2_HOME}/scripts/reorderFASTA.R"
+    shell: "python3 {PG2_HOME}/scripts/reorderFASTA_select_BLAST+ENST.py {output} {input}"
+    #script:"{PG2_HOME}/scripts/reorderFASTA.R"
 
 rule combine_assembly_tracks:
     input: expand("out/haplotype-{htype}/RNAseq/proteome.fasta", htype=HAPLOTYPES)
