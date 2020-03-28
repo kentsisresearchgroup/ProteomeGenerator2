@@ -68,18 +68,18 @@ subworkflow WGS_variant_calling:
 BCFTOOLS_DEV = os.path.join(PG2_HOME, config['non-conda_packages']['bcftools-dev'])
 if (not just_called_variants) and calling_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf=WGS_variant_calling("out/WGS/variant_calling/tumor/{cohort}.variant_calling_finished.vcf.gz")
+        input: vcf=WGS_variant_calling("out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz")
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
-                samples=TUMOR_SAMPLES[0]
+                samples=COHORT+'_tumor'
         conda: "envs/bcftools.yaml"
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 elif just_called_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf="out/WGS/variant_calling/tumor/{cohort}.variant_calling_finished.vcf.gz"
+        input: vcf="out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz"
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
-                samples=TUMOR_SAMPLES[0]
+                samples=COHORT+'_tumor'
         conda: "envs/bcftools.yaml"
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 else:
@@ -96,7 +96,7 @@ else:
         input: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
         output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
         conda: "envs/bcftools.yaml"
-        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err",samples=ALL_INPUT_VCF_SAMPLES[1]
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err",samples=COHORT+'_tumor'
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.merged_vcf} > {output.fasta}"
 
 rule genome_02a_MergeChrWiseCustomRef:

@@ -96,7 +96,7 @@ else:
 
 rule var_germ_01_CallGermlineVariantsPerInterval:
     input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam", interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
-    output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf"
+    output: temp("out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.g.vcf")
     params: n="4", R="'span[hosts=1] rusage[mem=3]'", \
         o="out/logs/intervals/vcf_{interval}.out", eo="out/logs/intervals/vcf_{interval}.err", \
         J="generate_vcf_{interval}"
@@ -125,6 +125,24 @@ rule var_germ_03_CNN1D_ScoreVariants:
 
 """
 
+rule var_germ_TMP_HardFilterVariants:
+    input: vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
+    output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.hardfiltered.vcf.gz"
+    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+        o="out/logs/intervals/hardfilter_variants_{interval}.out", eo="out/logs/intervals/hardfilter_variants_{interval}.err", \
+        J="hardfilter_variants_{interval}"
+    conda: "envs/gatk4.yaml"
+    shell: "gatk --java-options '-Xmx8g' VariantFiltration -V {input.vcf} -L {input.interval_list} --filter-expression 'QD < 2.0 || FS > 30.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -3.0 || ReadPosRankSum < -3.0' --filter-name 'HardFiltered' -O {output}" 
+
+rule var_germ_TMP_MergeHardFilteredIntervalWiseVCFs:
+    input: expand("out/WGS/variant_calling/{{tumor_or_normal}}/HTC-scattered/{{sample}}.HTC.{interval}.hardfiltered.vcf.gz",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
+    output: "out/WGS/variant_calling/{tumor_or_normal}/{sample}.hardfiltered.vcf"
+    params: n="1", R="'span[hosts=1]'", \
+        o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
+        J="merge_vcfs"
+    conda: "envs/gatk4.yaml"
+    shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
+
 rule var_germ_03_CNN2D_ScoreVariants:
     input: bam="out/WGS/variant_calling/{tumor_or_normal}/{sample}.analysis_ready.bam",vcf="out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/WGS/intervals/{interval}-scattered.interval_list"
     output: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
@@ -145,7 +163,7 @@ rule var_germ_04_AssignVariantTranches:
         o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
         J="assign_tranches"
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_1D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
+    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
 
 rule var_germ_05_FilterNonpassingGermlineVariants:
     input: "out/WGS/variant_calling/{tumor_or_normal}/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz"
@@ -241,17 +259,18 @@ if NORMAL_SAMPLES is not None:
     rule var_som_01_Mutect2_matched_tumor_normal:
         input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/WGS/variant_calling/normal/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/WGS/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
         output: vcf=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/WGS/variant_calling/tumor/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
-        params: n="8", R="'span[hosts=1] rusage[mem=4]'", \
+        params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_matched"
-        conda: "envs/gatk4.yaml"
+        conda: "envs/gatk4.1.5.0.yaml"
         shell: "gatk --java-options '-Xmx32g' Mutect2 -R {input.ref} -O {output.vcf} \
                   $(echo '{input.tumor}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{input.normal}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{NORMAL_SAMPLES}' | sed -r 's/[^ ]+/-normal &/g') \
                   --germline-resource {input.gnomad_af} \
                   --native-pair-hmm-threads {params.n} \
-                  -L {input.interval_list}"
+                  -L {input.interval_list} \
+                  -DF GoodCigarReadFilter"
 else:
     rule var_som_01_Mutect2_without_matched_normal:
         input: tumor=expand("out/WGS/variant_calling/tumor/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/WGS/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
