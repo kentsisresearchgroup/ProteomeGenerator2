@@ -112,7 +112,8 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
         output: read_one="out/bam_inputs/{sample}.RG.bam2fq.1.fq.gz",read_two="out/bam_inputs/{sample}.RG.bam2fq.2.fq.gz"
         conda: "envs/myenv.yaml"
         params: n="16", R="'span[hosts=1] rusage[mem=6]'", J="RNAseq_bam2fq", o="out/logs/RNAseq/bam2fq.out", eo="out/logs/RNAseq/bam2fq.err",int_readOne=os.path.join(TMP,"{sample}.RG.bam2fq.2.fq"),int_readTwo=os.path.join(TMP,"{sample}.RG.bam2fq.2.fq")
-        shell: "samtools collate -O -@ {params.n} {input} | picard SamToFastq -Xmx32g I=/dev/stdin FASTQ={params.int_readOne} SECOND_END_FASTQ={params.int_readTwo}; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
+        shell: "samtools collate -O -@ {params.n} {input} | samtools fastq -@ {params.n} -1 {params.int_readOne} -2 {params.int_readTwo} -; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
+        #shell: "samtools collate -O -@ {params.n} {input} | picard SamToFastq -Xmx32g I=/dev/stdin FASTQ={params.int_readOne} SECOND_END_FASTQ={params.int_readTwo}; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
 
     rule wgs_00_CleanRawFastqsWithFastp:
         input: read_one="out/bam_inputs/{sample}.RG.bam2fq.1.fq.gz",read_two="out/bam_inputs/{sample}.RG.bam2fq.2.fq.gz"
@@ -122,12 +123,13 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
         shell: "fastp -i {input.read_one} -o {output.read_one} -I {input.read_two} -O {output.read_two}"
 
     rule RNA_01_STAR_AlignRNAReadsByRG_BAM:
-        input: PG2_STAR_INDEX, read_one ="out/bam_inputs/{sample}.{readgroup}.bam2fq.fastp.1.fq.gz", read_two="out/bam_inputs/{sample}.{readgroup}.bam2fq.fastp.2.fq.gz", gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+        input: PG2_STAR_INDEX, read_one ="out/bam_inputs/{sample}.{readgroup}.bam2fq.1.fq.gz", read_two="out/bam_inputs/{sample}.{readgroup}.bam2fq.2.fq.gz", gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+        #input: PG2_STAR_INDEX, read_one ="out/bam_inputs/{sample}.{readgroup}.bam2fq.fastp.1.fq.gz", read_two="out/bam_inputs/{sample}.{readgroup}.bam2fq.fastp.2.fq.gz", gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
         output: temp("out/haplotype-{htype}/RNAseq/alignment/bam_inputs/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam")
         benchmark: "out/benchmarks/h-{htype}.{sample}.{readgroup}.STAR.json"
         log: "out/logs/h-{htype}.{sample}.{readgroup}.STAR.txt"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR.out", eo="out/logs/STAR.err", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR_{sample}_bam.out", eo="out/logs/STAR_{sample}_bam.err", \
                 overhang=int(config['parameters']['RNA-seq_module']['STAR_alignment']['rnaseq_read_length'])-1
         shell: "STAR \
             --genomeDir {params.directory} \
@@ -165,7 +167,7 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
         benchmark: "out/benchmarks/h-{htype}.{sample}.{readgroup}.STAR.json"
         log: "out/logs/h-{htype}.{sample}.{readgroup}.STAR.txt"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR.out", eo="out/logs/STAR.err", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR_{sample}_fq.out", eo="out/logs/STAR_{sample}_fq.err", \
                 overhang=int(config['parameters']['RNA-seq_module']['STAR_alignment']['rnaseq_read_length'])-1
         shell: "STAR \
             --genomeDir {params.directory} \
@@ -198,7 +200,7 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
 # Filter aligned reads in accordance with best practices
 rule RNA_02_FilterLowQualityReads:
     input: bam="out/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam"
-    output: temp("out/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.trimmed.out.bam")
+    output: "out/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.trimmed.out.bam"
     #log: "out/logs/haplotype-{htype}/{input_format}/{sample}.{readgroup}.filter.txt"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="filter", o="out/logs/filter.out", eo="out/logs/filter.err"
@@ -587,14 +589,14 @@ rule mqpar_conversion:
 
 
 MQ = PG2_HOME + "/MaxQuant/bin/MaxQuantCmd.exe"
-THREADS=str(len(RAW_FILES))
+THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
 rule maxQuant:
     input: expand("out/MaxQuant/{raw_file}",raw_file=RAW_FILES), par = "out/MaxQuant/analysis_ready.mqpar.xml"
     output: "out/MaxQuant/combined/txt/summary.txt"
     benchmark: "out/benchmarks/maxQuant.txt"
     log: "out/logs/maxQuant.txt"
     singularity: "docker://mono:5.12.0.226"
-    params: n=THREADS, J="MQ", R="'span[ptile={}] rusage[mem=4]'".format(THREADS), o="out/logs/mq.out", eo="out/logs/mq.err"
+    params: n=THREADS, J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(THREADS), o="out/logs/mq.out", eo="out/logs/mq.err"
     shell: "mono {MQ} {input.par}"
 
 
