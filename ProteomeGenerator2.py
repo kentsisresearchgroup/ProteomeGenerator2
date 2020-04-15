@@ -95,7 +95,11 @@ rna_seq_read_length = config['input_files']['RNA-seq_module']['read_length']
 data_is_paired = config['input_files']['RNA-seq_module']['data_is_paired']
 SJ_OVERHANG = int(rna_seq_read_length/2)-1 if data_is_paired else rna_seq_read_length-1
 
+<<<<<<< HEAD
 MAX_SEEDS_PER_WINDOW=config['parameters']['RNA-seq_module']['STAR_alignment']['advanced']['max_seeds_per_window']
+=======
+MAX_SEEDS_PER_WINDOW=config['parameters']['RNA-seq_module']['STAR_alignment']['advanced']['seed_per_window_max']
+>>>>>>> 912675863ade03980e610a8cd5d347ddc5c48cc5
 MAX_INTRON_LENGTH=config['parameters']['RNA-seq_module']['STAR_alignment']['advanced']['max_intron_length']
 MAX_MATES_GAP=config['parameters']['RNA-seq_module']['STAR_alignment']['advanced']['max_mates_gap']
 
@@ -137,7 +141,11 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
         conda: "envs/myenv.yaml"
         params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/STAR_{sample}_bam.out", eo="out/logs/STAR_{sample}_bam.err", \
                 strand_field=lambda wildcards: 'None' if config['input_files']['RNA-seq_module']['bam_inputs'][wildcards.sample]['data_is_stranded'] else 'intronMotif', \
+<<<<<<< HEAD
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}.{}'.format(wildcards.readgroup,wildcards.sample,uuid.uuid4()))
+=======
+                tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}.{}'.format(wildcards.readgroup,wildcards.sample,uuid.uuid4())), \
+>>>>>>> 912675863ade03980e610a8cd5d347ddc5c48cc5
         shell: "STAR \
             --genomeDir {params.directory} \
             --readFilesIn {input.read_one} {input.read_two} \
@@ -217,7 +225,11 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
 # Filter aligned reads in accordance with best practices
 import math
 max_allowed_multimaps = config['parameters']['RNA-seq_module']['read_filtering']['maximum_allowed_multimaps']
+<<<<<<< HEAD
 bamflag_filters = config['parameters']['RNA-seq_module']['read_filtering']['advanced']['filter_out_bamFlags']
+=======
+bamflag_filters = config['parameters']['RNA_seq_module']['read_filtering']['advanced']['filter_out_bamFlags']
+>>>>>>> 912675863ade03980e610a8cd5d347ddc5c48cc5
 rule RNA_02_FilterLowQualityReads:
     input: bam="out/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam"
     output: "out/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.trimmed.out.bam"
