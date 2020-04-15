@@ -231,12 +231,12 @@ main: {
         my $cmd = "$UTILDIR/revise_gencode_annotations.pl --gencode_gtf $gtf_file --out_gtf $new_gtf_file";
         $pipeliner->add_commands(new Command($cmd, "$local_checkpoints_dir/revised_gencode_annots.ok"));
 
-        #my $customized_gtf = "$gtf_file.revised.custom.gtf";
-        #$cmd = "$UTILDIR/add_gtf_custom_targets.pl --in_gtf $new_gtf_file --out_gtf $customized_gtf";
-        #$pipeliner->add_commands(new Command($cmd, "$local_checkpoints_dir/customized_gtf.ok"));
+        my $customized_gtf = "$gtf_file.revised.custom.gtf";
+        $cmd = "$UTILDIR/add_gtf_custom_targets.pl --in_gtf $new_gtf_file --out_gtf $customized_gtf";
+        $pipeliner->add_commands(new Command($cmd, "$local_checkpoints_dir/customized_gtf.ok"));
         
         
-        #$gtf_file = $customized_gtf;
+        $gtf_file = $customized_gtf;
         $gtf_file = $new_gtf_file;
         
         my $masked_genome_fa_file = "$genome_fa_file.pseudo_masked.fa";
@@ -305,7 +305,7 @@ main: {
         # repeat masking of transposable elements.
         my $dfam_masked_cdsplus = "ref_annot.cdsplus.dfam_masked.fa";
         
-        $cmd = "$UTILDIR/dfam_repeat_masker.pl --dfam_hmm $dfam_db --target_fa $ref_annot_cdsplus_fa --out_masked $dfam_masked_cdsplus --CPU $CPU";
+        $cmd = "$UTILDIR/dfam_repeat_masker.pl --dfam_hmm $dfam_db --target_fa $ref_annot_cdsplus_fa --out_masked $dfam_masked_cdsplus --CPU $CPU --util_dir $UTILDIR";
         $pipeliner->add_commands(new Command($cmd, "$local_checkpoints_dir/$dfam_masked_cdsplus.ok"));
         
         $ref_annot_cdsplus_fa = $dfam_masked_cdsplus;

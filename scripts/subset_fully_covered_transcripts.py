@@ -15,7 +15,8 @@ for covered_transcripts_gtf in sys.argv[3:]:
 			#print(line)
 			if prev_line and line.startswith(';'): line = prev_line + line
 			#print(line)
-			transcript=re.search(r'EN[A-Z]*ST[0-9]+.[0-9]+',line).group()
+			if 'CUSTOM' in line: continue
+			transcript=re.search(r'EN[A-Z]*ST(R)?[0-9]+.[0-9]+',line).group()
 			if first_pass:
 				#print(transcript)
 				updated_covered_transcripts_set.add(transcript)

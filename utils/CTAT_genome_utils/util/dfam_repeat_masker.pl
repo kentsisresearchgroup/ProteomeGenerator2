@@ -45,6 +45,7 @@ my $target_fa;
 my $out_masked_fa;
 my $hard_mask_flag;
 my $tmpdir;
+my $UTILDIR;
 
 &GetOptions ( 'h' => \$help_flag,
       
@@ -55,6 +56,7 @@ my $tmpdir;
               'hard' => \$hard_mask_flag,
     
               'tmpdir=s' => \$tmpdir,
+              'util_dir=s' => \$UTILDIR,
     );
 
 if ($help_flag) { 
@@ -74,7 +76,7 @@ main: {
     }
     
     my $repeat_regions_file = "$chckpts_dir/dfam.out";
-    my $cmd = "dfamscan.pl -fastafile $target_fa -hmmfile $dfam_hmm -dfam_outfile $repeat_regions_file --masking_thresh --cpu $CPU";
+    my $cmd = "$UTILDIR/dfamscan.pl -fastafile $target_fa -hmmfile $dfam_hmm -dfam_outfile $repeat_regions_file --masking_thresh --cpu $CPU";
     
     
     my $pipeliner = new Pipeliner('-verbose' => 2,
