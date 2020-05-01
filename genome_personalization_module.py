@@ -67,21 +67,22 @@ subworkflow WGS_variant_calling:
 # *we use the included dev branch of bcftools because the latest release (1.9) has a bug in bcftools consensus*
 if (not just_called_variants) and calling_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf=WGS_variant_calling("out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz")
-        output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
-        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
-                samples=COHORT+'_tumor'
+        input: vcf=WGS_variant_calling("out/WGS/variant_calling/{study_group}/{cohort}.{study_group}.variant_calling_finished.vcf.gz")
+        output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{sample_grou}/{cohort}.h-{htype}^{chr}.chain")
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{study_group}/{htype}^{chr}.out", eo="out/logs/chr-wise/{study_group}/{htype}^{chr}.err", \
+                study_grp=COHORT+'_{study_group}'
         conda: "envs/bcftools.yaml"
-        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
+        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.study_grp} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 elif just_called_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf="out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz"
-        output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
-        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err", \
-                samples=COHORT+'_tumor'
+        input: vcf="out/WGS/variant_calling/{study_group}/{cohort}.{study_group}.variant_calling_finished.vcf.gz"
+        output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.chain")
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{study_group}/{htype}^{chr}.out", eo="out/logs/chr-wise/{study_group}/{htype}^{chr}.err", \
+                study_grp=COHORT+'_{study_group}'
         conda: "envs/bcftools.yaml"
-        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
+        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.study_grp} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 else:
+    #TODO: implement tumor/matched normal functionality via sample name changes
     rule genome_00_MergeAllInputVCFs:
         input: vcfs=INPUT_VCF_GZ_FILES
         output: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
@@ -93,23 +94,23 @@ else:
             OUTPUT={output.merged_vcf}"
     rule genome_01_CreateChrWiseCustomRef:
         input: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
-        output: fasta=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{cohort}.h-{htype}^{chr}.chain")
+        output: fasta=temp("out/custom_ref/chr_split/experiment/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/experiment/{cohort}.h-{htype}^{chr}.chain")
         conda: "envs/bcftools.yaml"
-        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{htype}^{chr}.out", eo="out/logs/chr-wise/{htype}^{chr}.err",samples=COHORT+'_tumor'
-        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.samples} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.merged_vcf} > {output.fasta}"
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/experiment/{htype}^{chr}.out", eo="out/logs/chr-wise/experiment/{htype}^{chr}.err",study_grp=COHORT+'_experiment'
+        shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.study_grp} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.merged_vcf} > {output.fasta}"
 
 rule genome_02a_MergeChrWiseCustomRef:
-    input: expand("out/custom_ref/chr_split/{{cohort}}.h-{{htype}}^{chr}.fa",chr=CHROMOSOMES),expand("out/custom_ref/chr_split/{{cohort}}.h-{{htype}}^{chr}.chain",chr=CHROMOSOMES)
-    output: fasta="out/custom_ref/{cohort}_H{htype}.fa",chain="out/custom_ref/{cohort}_H{htype}.chain"
+    input: expand("out/custom_ref/chr_split/{{study_group}}/{{cohort}}.h-{{htype}}^{chr}.fa",chr=CHROMOSOMES),expand("out/custom_ref/chr_split/{{study_group}}/{{cohort}}.h-{{htype}}^{chr}.chain",chr=CHROMOSOMES)
+    output: fasta="out/custom_ref/{cohort}.{study_group}.H{htype}.fa",chain="out/custom_ref/{cohort}.{study_group}.H{htype}.chain"
     params: n="1", R="'rusage[mem=4]'", J="merge_customRef", o="out/logs/merge_customRef.out", eo="out/logs/merge_customRef.err"
-    shell: "awk 1 out/custom_ref/chr_split/{wildcards.cohort}.h-{wildcards.htype}^*.fa > {output.fasta}; awk 1 out/custom_ref/chr_split/{wildcards.cohort}.h-{wildcards.htype}^*.chain > {output.chain}"
+    shell: "awk 1 out/custom_ref/chr_split/{wildcards.study_group}/{wildcards.cohort}.h-{wildcards.htype}^*.fa > {output.fasta}; awk 1 out/custom_ref/chr_split/{wildcards.study_group}/{wildcards.cohort}.h-{wildcards.htype}^*.chain > {output.chain}"
 
-# Adjust ref annotation coords to account for indels
+# Adjust ref annotation coords
 rule genome_02b_LiftoverAnnotationGTF:
-    input: chain="out/custom_ref/{cohort}_H{htype}.chain", vcf_refGtf=STOCK_GENOME_GTF
-    output: "out/custom_ref/{cohort}_H{htype}.gtf"
+    input: chain="out/custom_ref/{cohort}.{study_group}.H{htype}.chain", vcf_refGtf=STOCK_GENOME_GTF
+    output: "out/custom_ref/{cohort}.{study_group}.H{htype}.gtf"
     params: n="1", R="'rusage[mem=4]'", J="LiftoverGTF", o="out/logs/liftover.out", eo="out/logs/liftover.err", \
-            temp_gtf="out/custom_ref/{cohort}_H{htype}_temp.gtf"
+            temp_gtf="out/custom_ref/{cohort}.{study_group}.H{htype}_temp.gtf"
     conda: "envs/crossmap.yaml"
     shell: "CrossMap.py gff {input.chain} {input.vcf_refGtf} {params.temp_gtf}; awk '{{print \"{wildcards.htype}_\" $0}}' {params.temp_gtf} > {output}; rm {params.temp_gtf}"
 
