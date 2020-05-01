@@ -63,6 +63,8 @@ if creating_custom_genome or continuing_after_genome_personalization:
     PG2_GENOME_FASTA = "out/custom_ref/{}_H{{htype}}.fa".format(COHORT)
     PG2_GENOME_GTF = "out/custom_ref/{}_H{{htype}}.gtf".format(COHORT)
     PG2_STAR_INDEX = "out/custom_ref/{}.h-{{htype}}.STARindex/SA".format(COHORT)
+    PG2_GENOME_CHAIN = "out/custom_ref/{}_H{{htype}}.chain".format(COHORT)
+    
 else:
     PG2_GENOME_FASTA = STOCK_GENOME_FASTA
     PG2_GENOME_GTF = STOCK_GENOME_GTF
@@ -157,6 +159,7 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
             --chimSegmentMin 12 \
             --chimJunctionOverhangMin 12 \
             --chimOutJunctionFormat 1 \
+            --chimOutType WithinBAM \
             --alignMatesGapMax {MAX_MATES_GAP} \
             --alignIntronMax {MAX_INTRON_LENGTH} \
             --alignSJstitchMismatchNmax 5 -1 5 5 \
@@ -199,6 +202,7 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
             --chimSegmentMin 12 \
             --chimJunctionOverhangMin 12 \
             --chimOutJunctionFormat 1 \
+            --chimOutType WithinBAM \
             --alignMatesGapMax {MAX_MATES_GAP} \
             --alignIntronMax {MAX_INTRON_LENGTH} \
             --alignSJstitchMismatchNmax 5 -1 5 5 \
@@ -242,7 +246,8 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
 
 if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
     rule RNA_03_MergeRGsPerSample_FQ:
-        input: lambda wildcards: expand("out/haplotype-{{htype}}/RNAseq/alignment/fastq_inputs/{{sample}}.{readgroup}.Aligned.trimmed.out.bam", readgroup=config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'].keys())
+        input: lambda wildcards: expand("out/haplotype-{{htype}}/RNAseq/alignment/fastq_inputs/{{sample}}.{readgroup}.Aligned.sortedByCoord.out.bam", readgroup=config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'].keys())
+        #input: lambda wildcards: expand("out/haplotype-{{htype}}/RNAseq/alignment/fastq_inputs/{{sample}}.{readgroup}.Aligned.trimmed.out.bam", readgroup=config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'].keys())
         output: "out/haplotype-{htype}/RNAseq/alignment/fastq_inputs/{sample}.Aligned.trimmed.RG-merged.out.bam"
         log: "out/logs/h-{htype}.{sample}.MergeRGs.txt"
         conda: "envs/myenv.yaml"
@@ -410,9 +415,8 @@ rule main_03_ORF_PredictCodingRegions:
     log: "../../logs/h-{htype}.{track}.Predict.txt"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=18]'", J="Predict", o="out/logs/Predict.out", eo="out/logs/Predict.err"
-    shell: "rm -r {output.checkpoint_dir};cd out/haplotype-{wildcards.htype}/{wildcards.track}; TransDecoder.Predict \
+    shell: "rm -r {output.checkpoint_dir};cd out/haplotype-{wildcards.htype}/{wildcards.track}; {PG2_HOME}/utils/transdecoder/TransDecoder.Predict.IGNORE_OVERLAP \
         -t transcripts.fasta \
-        --retain_long_orfs_mode strict \
         --retain_long_orfs_length {nuc_ORF} \
         -v \
         --retain_blastp_hits blastp.outfmt6 2> {log}"
@@ -520,7 +524,7 @@ rule re_reorderFASTA:
 
 rule gff3_file_to_bed:
     input: "out/haplotype-{htype}/{track}/transcripts.genome.gff3"
-    output: "out/haplotype-{htype}/{track}/proteome_temp.bed"
+    output: "out/haplotype-{htype}/{track}/proteome_preLiftBack.bed"
     benchmark: "out/benchmarks/h-{htype}.{track}.gff3_file_to_bed.txt"
     log: "out/logs/h-{htype}.{track}.gff3_file_to_bed.txt"
     conda: "envs/myenv.yaml"
@@ -528,22 +532,22 @@ rule gff3_file_to_bed:
     shell: "cat {input} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_bed.pl /dev/stdin | tail -n +2 > {output} 2> {log}"
 
 
-if creating_custom_genome:
+if creating_custom_genome or continuing_after_genome_personalization:
     CHAINSWAP=os.path.join(PG2_HOME, config['non-conda_packages']['chainSwap'])
     rule create_reverse_chains:
-        input: create_custom_genome("out/custom_ref/"+COHORT+"_H{htype}.chain")
+        input: (create_custom_genome(PG2_GENOME_CHAIN) if creating_custom_genome else PG2_GENOME_CHAIN)
         output: "out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
         params: n="1", R="'rusage[mem=4]'", J="reverse_chains", o="out/logs/h-{htype}.reverse_chains.out", eo="out/logs/h-{htype}.reverse_chains.err"
         shell: "{CHAINSWAP} {input} {output}"
     rule liftOver_bed_coords:
-        input: bed="out/haplotype-{htype}/{track}/proteome_temp.bed", chain="out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
+        input: bed="out/haplotype-{htype}/{track}/proteome_preLiftBack.bed", chain="out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
         output: "out/haplotype-{htype}/{track}/proteome.bed"
         conda: "envs/myenv.yaml"
-        params: n="1", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/h-{htype}.{track}.liftOver_bed.err"
-        shell: "liftOver {input.bed} {input.chain} {output} {output}.unmapped"
+        params: n="1", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/h-{htype}.{track}.liftOver_bed.err", tmp_bed="out/haplotype-{htype}/{track}/proteome_temp.bed"
+        shell: "cat {input.bed} | cut -c 3- > {params.tmp_bed}; liftOver {params.tmp_bed} {input.chain} {output} {output}.unmapped; rm {params.tmp_bed}"
 else:
     rule rename_bed:
-        input: "out/haplotype-{htype}/{track}/proteome_temp.bed"
+        input: "out/haplotype-{htype}/{track}/proteome_preLiftBack.bed"
         output: "out/haplotype-{htype}/{track}/proteome.bed"
         params: n="1", R="'rusage[mem=8]'", J="rename_bed", o="out/logs/h-{htype}.{track}.rename_bed.out", eo="out/logs/h-{htype}.{track}.rename_bed.err"
         shell: "mv {input} {output}"

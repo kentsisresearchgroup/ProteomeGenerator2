@@ -65,7 +65,6 @@ subworkflow WGS_variant_calling:
 
 # For each chromosome, patch the stock reference with variants contained in the (phased) VCF.
 # *we use the included dev branch of bcftools because the latest release (1.9) has a bug in bcftools consensus*
-BCFTOOLS_DEV = os.path.join(PG2_HOME, config['non-conda_packages']['bcftools-dev'])
 if (not just_called_variants) and calling_variants:
     rule genome_01_CreateChrWiseCustomRef:
         input: vcf=WGS_variant_calling("out/WGS/variant_calling/tumor/{cohort}.tumor.variant_calling_finished.vcf.gz")

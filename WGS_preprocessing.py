@@ -26,7 +26,7 @@ input_file_format = config['input_files']['genome_personalization_module']['inpu
 
 if input_file_format == 'bam':
     SAMPLES=config['input_files']['genome_personalization_module']['bam_inputs'].keys()
-    """
+    
     rule wgs_00bam_PrepareRGwiseOutputMapForBamRevert:
         output: tsv="out/WGS/{tumor_or_normal}/{sample}.reverted_ubam_RGmap.tsv"
         params: n="1", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/rgmap.out", eo="out/logs/rgmap.err", J="create_rgmap", RG_header_list= lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['read_groups']
@@ -36,18 +36,28 @@ if input_file_format == 'bam':
                 for header in params.RG_header_list:
                     rg_id = [x for x in header.split(' ') if 'ID:' in x][0].replace('ID:','')
                     f.write('{}\t{}/out/WGS/{}/{}.{}.unmapped.bam\n'.format(rg_id,WD,wildcards.tumor_or_normal,wildcards.sample,rg_id))
-    """
+    
 
     rule wgs_01bam_RevertToUnmappedBAM:
+        #input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'],ref=STOCK_GENOME_FASTA
         input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{tumor_or_normal}/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
-        output: temp("out/WGS/{tumor_or_normal}/{sample}.RG.unmapped.bam")
-        params: n="16", R="'span[hosts=1] rusage[mem=10]'", o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
-        conda: "envs/bwa_picard_samtools.yaml"
-        shell: "picard -Xmx160g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} \
-                  MAX_RECORDS_IN_RAM=25000000 \
-                  O={output} \
-                  MAX_DISCARD_FRACTION=0.03 VALIDATION_STRINGENCY=SILENT"
-
+        output: temp("out/WGS/{tumor_or_normal}/{sample}.{RG}.unmapped.bam")
+        params: n="16", R="'span[hosts=1] rusage[mem=12]'", o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
+        conda: "envs/gatk4.yaml"
+        #conda: "envs/bwa_picard_samtools.yaml"
+        shell: "gatk --java-options '-Xmx145g -Xms145g' RevertSam -I {input.bam} --TMP_DIR {TMP}/revert -R {input.ref} \
+                  --OUTPUT_BY_READGROUP true --OUTPUT_MAP {input.tsv} \
+                  --ATTRIBUTE_TO_CLEAR XT \
+                  --VALIDATION_STRINGENCY SILENT --MAX_RECORDS_IN_RAM 30000000"
+        
+        #shell: "picard -Xmx175g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} \
+        #          ATTRIBUTE_TO_CLEAR=XT \
+        #          MAX_RECORDS_IN_RAM=20000000 \
+        #          VALIDATION_STRINGENCY=SILENT \
+        #          OUTPUT_BY_READGROUP=true OUTPUT_MAP={input.tsv}"
+        #          #O={output} "
+        #          #MAX_DISCARD_FRACTION=0.03 VALIDATION_STRINGENCY=SILENT"
+        
 elif input_file_format == 'fastq':
 
     """   
@@ -61,7 +71,8 @@ elif input_file_format == 'fastq':
     rule wgs_01fq_GenerateRGWiseUbamsFromFq:
         #input: read_one="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.1.fq", read_two="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.fastp.2.fq"
         input: read_one=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'],read_two=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz']
-        output: temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam")
+        #output: temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam")
+        output: "out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam"
         params: n="8", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/fastq2ubam.out", eo="out/logs/fastq2ubam.err", J="fq2ubams", \
                 tumor_or_normal=lambda wildcards: config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['matched_sample_params']['tumor_or_normal'] if config['input_files']['genome_personalization_module']['fastq_inputs'][wildcards.sample]['matched_sample_params']['is_matched_sample'] else 'tumor', \
                 output_bamfile=lambda wildcards: WD + "/out/WGS/{}/{}.{}.unmapped.bam".format(wildcards.tumor_or_normal,wildcards.sample,wildcards.readgroup), \
@@ -95,24 +106,28 @@ elif input_file_format == 'fastq':
                   MAX_RECORDS_IN_RAM=30000000 TMP_DIR={TMP} \
                   SORT_ORDER=queryname"
     """
-
+"""
 rule wgs_02_NameSortedUbam2Fastq4Alignment:
     input: ubam_file="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam"
     output: fq1=temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.1.fq.gz"), fq2=temp("out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.2.fq.gz")
     params: n="4",  R="'span[hosts=1]'", o="out/logs/bam2fq.out", eo="out/logs/bam2fq.err", J="bam2fq", \
             tmp_fq1=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2fq.1.fq"),tmp_fq2=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2bq.2.fq")
     conda: "envs/bwa_picard_samtools.yaml"
-    shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+    shell: "samtools fastq -@ {params.n} -1 {params.tmp_fq1} -2 {params.tmp_fq2} {input.ubam_file}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+    #shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+"""
 
 rule wgs_03_BwaAndSortAndMergeBamAlignment_FQ:
-    input:  ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam",read_one="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.1.fq.gz", read_two="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.2.fq.gz", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
+    input:  ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
+    #input:  ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam",read_one="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.1.fq.gz", read_two="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.2.fq.gz", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
     output: "out/WGS/{tumor_or_normal}/{sample}.{readgroup}.aligned_sorted_ubam-merged.bam"
     params: n="32", R="'span[hosts=1] rusage[mem=2]'", o="out/logs/bwa_n_mergebams_{sample}_{readgroup}.out", eo="out/logs/bwa_n_mergebams_{sample}_{readgroup}.err", J="bwa_mergebams", tumor_or_normal=lambda wildcards: config['input_files']['genome_personalization_module'][input_file_format+'_inputs'][wildcards.sample]['matched_sample_params']['tumor_or_normal'] if config['input_files']['genome_personalization_module'][input_file_format+'_inputs'][wildcards.sample]['matched_sample_params']['is_matched_sample'] else 'tumor', output_bamfile=lambda wildcards:WD + "/out/WGS/{}/{}.{}.aligned_sorted.bam".format(wildcards.tumor_or_normal,wildcards.sample,wildcards.readgroup)
     conda: "envs/bwa_picard_samtools.yaml"
-    shell: "bwa mem -M -t {params.n} {STOCK_GENOME_FASTA} {input.read_one} {input.read_two} | samtools view -Shu -@ {params.n} - | \
+    #shell: "bwa mem -M -t {params.n} {STOCK_GENOME_FASTA} {input.read_one} {input.read_two} | samtools view -Shu -@ {params.n} - | \
+    shell: "samtools fastq -0 /dev/null {input.ubam} | bwa mem -M -p -t {params.n} {STOCK_GENOME_FASTA} - | samtools view -Shu -@ {params.n} - | \
             picard MergeBamAlignment -Xmx64g ALIGNED_BAM=/dev/stdin UNMAPPED_BAM={input.ubam} \
               REFERENCE_SEQUENCE={STOCK_GENOME_FASTA} OUTPUT={output} CREATE_INDEX=true \
-              CLIP_OVERLAPPING_READS=true \
+              ADD_MATE_CIGAR=true CLIP_OVERLAPPING_READS=true \
               INCLUDE_SECONDARY_ALIGNMENTS=true MAX_INSERTIONS_OR_DELETIONS=-1 \
               ATTRIBUTES_TO_RETAIN=XS \
               MAX_RECORDS_IN_RAM=30000000 TMP_DIR={TMP} \
@@ -130,8 +145,8 @@ if input_file_format == 'fastq':
 
 elif input_file_format == 'bam':
     rule wgs_04_MergeAllRGs:
-        #input: lambda wildcards: expand("out/WGS/{{tumor_or_normal}}/{{sample}}.{readgroup}.aligned_sorted_ubam-merged.bam", readgroup=[[q for q in x.split(' ') if 'ID:' in q][0].replace('ID:','') for x in config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['read_groups']])
-        input: "out/WGS/{tumor_or_normal}/{sample}.RG.aligned_sorted_ubam-merged.bam"
+        input: lambda wildcards: expand("out/WGS/{{tumor_or_normal}}/{{sample}}.{readgroup}.aligned_sorted_ubam-merged.bam", readgroup=[[q for q in x.split(' ') if 'ID:' in q][0].replace('ID:','') for x in config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['read_groups']])
+        #input: "out/WGS/{tumor_or_normal}/{sample}.RG.aligned_sorted_ubam-merged.bam"
         output: temp("out/WGS/{tumor_or_normal}/{sample}.aligned_sorted_ubam-merged_RG-merged.bam")
         params: n="16", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/merge_sample_RGs.out", eo="out/logs/merge_sample_RGs.err", J="merge_sample_RGs"
         conda: "envs/bwa_picard_samtools.yaml"
