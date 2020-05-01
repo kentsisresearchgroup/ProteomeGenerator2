@@ -39,14 +39,15 @@ if input_file_format == 'bam':
     """
 
     rule wgs_01bam_RevertToUnmappedBAM:
-        input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{tumor_or_normal}/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
+        input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'],ref=STOCK_GENOME_FASTA
+        #input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{tumor_or_normal}/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
         output: temp("out/WGS/{tumor_or_normal}/{sample}.RG.unmapped.bam")
         params: n="16", R="'span[hosts=1] rusage[mem=10]'", o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
         conda: "envs/bwa_picard_samtools.yaml"
         shell: "picard -Xmx160g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} \
                   MAX_RECORDS_IN_RAM=25000000 \
-                  O={output} \
-                  MAX_DISCARD_FRACTION=0.03 VALIDATION_STRINGENCY=SILENT"
+                  O={output} "
+                  #MAX_DISCARD_FRACTION=0.03 VALIDATION_STRINGENCY=SILENT"
 
 elif input_file_format == 'fastq':
 
@@ -102,7 +103,8 @@ rule wgs_02_NameSortedUbam2Fastq4Alignment:
     params: n="4",  R="'span[hosts=1]'", o="out/logs/bam2fq.out", eo="out/logs/bam2fq.err", J="bam2fq", \
             tmp_fq1=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2fq.1.fq"),tmp_fq2=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2bq.2.fq")
     conda: "envs/bwa_picard_samtools.yaml"
-    shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+    shell: "samtools fastq -@ {params.n} -1 {params.tmp_fq1} -2 {params.tmp_fq2} -; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+    #shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
 
 rule wgs_03_BwaAndSortAndMergeBamAlignment_FQ:
     input:  ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam",read_one="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.1.fq.gz", read_two="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.ubam2fq.2.fq.gz", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
