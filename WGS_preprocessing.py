@@ -58,6 +58,7 @@ if input_file_format == 'bam':
         #          #O={output} "
         #          #MAX_DISCARD_FRACTION=0.03 VALIDATION_STRINGENCY=SILENT"
         
+
 elif input_file_format == 'fastq':
 
     """   
@@ -113,9 +114,14 @@ rule wgs_02_NameSortedUbam2Fastq4Alignment:
     params: n="4",  R="'span[hosts=1]'", o="out/logs/bam2fq.out", eo="out/logs/bam2fq.err", J="bam2fq", \
             tmp_fq1=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2fq.1.fq"),tmp_fq2=os.path.join(TMP,"{sample}.{readgroup}.unmapped.ubam2bq.2.fq")
     conda: "envs/bwa_picard_samtools.yaml"
+<<<<<<< HEAD
     shell: "samtools fastq -@ {params.n} -1 {params.tmp_fq1} -2 {params.tmp_fq2} {input.ubam_file}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
     #shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
 """
+=======
+    shell: "samtools fastq -@ {params.n} -1 {params.tmp_fq1} -2 {params.tmp_fq2} -; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+    #shell: "picard SamToFastq I={input.ubam_file} FASTQ={params.tmp_fq1} SECOND_END_FASTQ={params.tmp_fq2}; gzip -c {params.tmp_fq1} > {output.fq1}; gzip -c {params.tmp_fq2} > {output.fq2}"
+>>>>>>> fec4cd1d9202ad882ef32a48c19dcda345b558f4
 
 rule wgs_03_BwaAndSortAndMergeBamAlignment_FQ:
     input:  ubam="out/WGS/{tumor_or_normal}/{sample}.{readgroup}.unmapped.bam", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
