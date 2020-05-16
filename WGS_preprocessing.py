@@ -39,7 +39,6 @@ if input_file_format == 'bam':
     
 
     rule wgs_01bam_RevertToUnmappedBAM:
-        #input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'],ref=STOCK_GENOME_FASTA
         input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
         output: temp("out/WGS/{sample}.{readgroup}.unmapped.bam")
         params: n="16", R="'span[hosts=1] rusage[mem=10]'", java_xmx=str(160*10-4), max_records_in_ram=str(25000000), o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
