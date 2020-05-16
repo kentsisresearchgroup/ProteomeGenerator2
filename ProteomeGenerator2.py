@@ -37,14 +37,41 @@ assert not (creating_custom_genome and continuing_after_genome_personalization),
 
 HAPLOTYPES = [1,2] if (config['parameters']['genome_personalization_module']['variant_calling']['make_customRef_diploid'] and (creating_custom_genome or continuing_after_genome_personalization)) else [1] # haplotype number determines number of parallelized runs
 
+matched_tumor_normal_data=config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal']
+
+exp_group='tumor' if matched_tumor_normal_data else 'experiment'
+ctrl_group='normal' if matched_tumor_normal_data else 'control'
+
 # The transcriptome, genome annotation, and/or gene fusion tracks are merged at the end to comprise the proteome
 TRACKS=[]
 if RNA_seq_module_enabled:
     RNAseq_file_format = config['input_files']['RNA-seq_module']['input_file_format']
     BAM_SAMPLES=[]
     FASTQ_SAMPLES=[]
-    if 'bam' in RNAseq_file_format: BAM_SAMPLES=list(config['input_files']['RNA-seq_module']['bam_inputs'].keys())
-    if 'fastq' in RNAseq_file_format: FASTQ_SAMPLES=list(config['input_files']['RNA-seq_module']['fastq_inputs'].keys())
+    EXPERIMENT_SAMPLES=[]
+    CONTROL_SAMPLES=[]
+    SAMPLE_DICT=dict()
+
+    if 'bam' in RNAseq_file_format: 
+        BAM_SAMPLES=list(config['input_files']['RNA-seq_module']['bam_inputs'].keys())
+        SAMPLE_DICT['bam']=BAM_SAMPLES
+        for s in BAM_SAMPLES:
+            if config['input_files']['RNA-seq_module']['bam_inputs'][s]['experiment_vs_control']=='experiment': EXPERIMENT_SAMPLES.append(s)
+            elif config['input_files']['RNA-seq_module']['bam_inputs'][s]['experiment_vs_control']=='control': CONTROL_SAMPLES.append(s)
+        SAMPLE_DICT[('bam',exp_group)]=EXPERIMENT_SAMPLES
+        SAMPLE_DICT[('bam',ctrl_group)]=CONTROL_SAMPLES
+        #SAMPLE_DICT[('bam','experiment')]=EXPERIMENT_SAMPLES
+        #SAMPLE_DICT[('bam','control')]=CONTROL_SAMPLES
+    if 'fastq' in RNAseq_file_format: 
+        FASTQ_SAMPLES = list(config['input_files']['RNA-seq_module']['fastq_inputs'].keys())
+        for s in FASTQ_SAMPLES:
+            if config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='experiment': EXPERIMENT_SAMPLES.append(s)
+            elif config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='control': CONTROL_SAMPLES.append(s)
+        SAMPLE_DICT[('fastq',exp_group)]=list(set(EXPERIMENT_SAMPLES)-set(BAM_SAMPLES))
+	#SAMPLE_DICT[('fastq','experiment')]=list(set(EXPERIMENT_SAMPLES)-set(BAM_SAMPLES))
+	SAMPLE_DICT[('fastq',ctrl_group)]=list(set(CONTROL_SAMPLES)-set(BAM_SAMPLES))
+        #SAMPLE_DICT[('fastq','control')]=list(set(CONTROL_SAMPLES)-set(BAM_SAMPLES))
+
     RNA_SAMPLES=BAM_SAMPLES+FASTQ_SAMPLES
     
     if config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['assemble_transcriptome_with_StringTie']:
@@ -60,18 +87,26 @@ if config['user_defined_workflow']['genome_annotation_track']['track_enabled']:
 ### Input/Output path resolution utils ###
 
 if creating_custom_genome or continuing_after_genome_personalization:
-    PG2_GENOME_FASTA = "out/custom_ref/{}.{{study_group}}.H{{htype}}.fa".format(COHORT)
-    PG2_GENOME_GTF = "out/custom_ref/{}.{{study_group}}.H{{htype}}.gtf".format(COHORT)
-    PG2_STAR_INDEX = "out/custom_ref/{}.{{study_group}}.h-{{htype}}.STARindex/SA".format(COHORT)
-    PG2_GENOME_CHAIN = "out/custom_ref/{}.{{study_group}}.H{{htype}}.chain".format(COHORT)
-    
+    if config['user_defined_workflow']['genome_personalization_module']['create_separate_tumor_normal_genomes']:
+        PG2_GENOME_FASTA = "out/custom_ref/{}.{{study_group}}.H{{htype}}.fa".format(COHORT)
+        PG2_GENOME_GTF = "out/custom_ref/{}.{{study_group}}.H{{htype}}.gtf".format(COHORT)
+        PG2_STAR_INDEX = "out/custom_ref/{}.{{study_group}}.h-{{htype}}.STARindex/SA".format(COHORT)
+        PG2_GENOME_CHAIN = "out/custom_ref/{}.{{study_group}}.H{{htype}}.chain".format(COHORT)
+    else:
+        #exp_group = 'tumor' if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else 'experiment'
+        PG2_GENOME_FASTA = "out/custom_ref/{}.{}.H{{htype}}.fa".format(COHORT,exp_group)
+        PG2_GENOME_GTF = "out/custom_ref/{}.{}.H{{htype}}.gtf".format(COHORT,exp_group)
+        PG2_STAR_INDEX = "out/custom_ref/{}.{}.h-{{htype}}.STARindex/SA".format(COHORT,exp_group)
+        PG2_GENOME_CHAIN = "out/custom_ref/{}.{}.H{{htype}}.chain".format(COHORT,exp_group)
+
 else:
     PG2_GENOME_FASTA = STOCK_GENOME_FASTA
     PG2_GENOME_GTF = STOCK_GENOME_GTF
     prebuilt_STAR_index_dir = config['stock_references']['genome']['optional_aligner_indices']['STAR_index_dir']
     PG2_STAR_INDEX = os.path.join(prebuilt_STAR_index_dir,'SA') if prebuilt_STAR_index_dir else "out/custom_ref/{}.{{study_group}}.h-{{htype}}.STARindex/SA".format(os.path.basename(PG2_GENOME_FASTA).strip('.fa'))
+
+
  
-snakemake.utils.makedirs('out')
 snakemake.utils.makedirs('out/benchmarks')
 snakemake.utils.makedirs('out/logs/chr-wise')
 snakemake.utils.makedirs('out/logs/RNAseq')
@@ -174,7 +209,8 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
 if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
     import uuid
     rule RNA_01_STAR_AlignRNAReadsByRG_FQ:
-        input: PG2_STAR_INDEX, read_one =lambda wildcards: ([config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'], config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz']] if config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz'] else config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz']), gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+        input: PG2_STAR_INDEX, reads =lambda wildcards: ([config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'], config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz']] if config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz'] else config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz']), gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
+        #input: PG2_STAR_INDEX, reads =lambda wildcards: ([config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz'], config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz']] if config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R2_fq.gz'] else config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][wildcards.readgroup]['R1_fq.gz']), gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
         output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/fastq_inputs/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam"
         benchmark: "out/benchmarks/{study_group}.h-{htype}.{sample}.{readgroup}.STAR.json"
         log: "out/logs/{study_group}/h-{htype}.{sample}.{readgroup}.STAR.txt"
@@ -184,7 +220,7 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}.{}'.format(wildcards.readgroup,wildcards.sample,uuid.uuid4()))
         shell: "STAR \
             --genomeDir {params.directory} \
-            --readFilesIn {input.read_one} \
+            --readFilesIn {input.reads} \
             --outFileNamePrefix out/{wildcards.study_group}/haplotype-{wildcards.htype}/RNAseq/alignment/fastq_inputs/{wildcards.sample}.{wildcards.readgroup}. \
             --outTmpDir {params.tmp_dir} \
             --outSAMattributes NH HI XS \
@@ -256,9 +292,7 @@ rule RNA_04_IndexBAMPerSample:
     output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.Aligned.trimmed.RG-merged.out.bai"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="BuildBamIndex", o="out/logs/BuildBamIndex.out", eo="out/logs/BuildBamIndex.err"
-    shell: "picard \
-            BuildBamIndex \
-            INPUT={input} 2> {log}"
+    shell: "picard BuildBamIndex INPUT={input}"
 
 transcriptome_assembly_mode = config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['GTF-guided-mapping_or_denovo-assembly']
 
@@ -283,7 +317,8 @@ if RNA_seq_module_enabled and transcriptome_assembly_mode == 'denovo':
 
 if RNA_seq_module_enabled:
     rule RNA_06_trscrpt_CreateSubsetOfFullyCoveredRefTranscripts:
-        input: gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF),covered_refs=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_covRefs.gtf",sample=BAM_SAMPLES),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_covRefs.gtf",sample=FASTQ_SAMPLES)] for x in subl]
+        #input: gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF),covered_refs=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_covRefs.gtf",sample=BAM_SAMPLES),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_covRefs.gtf",sample=FASTQ_SAMPLES)] for x in subl]
+        input: gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF),covered_refs=lambda wildcards: [x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_covRefs.gtf",sample=SAMPLE_DICT[('bam',wildcards.study_group)]),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_covRefs.gtf",sample=SAMPLE_DICT[('fastq',wildcards.study_group)])] for x in subl]
         output: gtf_subset=temp("out/{study_group}/haplotype-{htype}/transcriptome/gtf_subset.covRefsOnly.gtf")
         params: n="1", R="'span[hosts=1] rusage[mem=16]'", J="subset_refGTF", o="out/logs/subset_refGTF.out", eo="out/logs/subset_refGTF.err"
         shell: "python3 {PG2_HOME}/scripts/subset_fully_covered_transcripts.py {output.gtf_subset} {input.gtf} {input.covered_refs}"
@@ -291,7 +326,8 @@ if RNA_seq_module_enabled:
     retaining_fully_covered_refTranscripts = config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['retain_all_fully_covered_reference_transcripts']
     if retaining_fully_covered_refTranscripts:
         rule RNA_07_trscrpt_MergeSampleWiseTranscriptomesPlusCoveredRefs:
-            input: sample_transcriptome=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=BAM_SAMPLES,mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=FASTQ_SAMPLES,mode=transcriptome_assembly_mode)] for x in subl], gtf_subset="out/{study_group}/haplotype-{htype}/transcriptome/gtf_subset.covRefsOnly.gtf"
+            input: sample_transcriptome=lambda wildcards: [x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=SAMPLE_DICT[('bam',wildcards.study_group)],mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=SAMPLE_DICT[('fastq',wildcards.study_group)],mode=transcriptome_assembly_mode)] for x in subl], gtf_subset="out/{study_group}/haplotype-{htype}/transcriptome/gtf_subset.covRefsOnly.gtf"
+            #input: sample_transcriptome=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=BAM_SAMPLES,mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=FASTQ_SAMPLES,mode=transcriptome_assembly_mode)] for x in subl], gtf_subset="out/{study_group}/haplotype-{htype}/transcriptome/gtf_subset.covRefsOnly.gtf"
             output: "out/{study_group}/haplotype-{htype}/transcriptome/transcriptome.gtf"
             log: "out/logs/{study_group}/h-{htype}.merge.txt"
             conda: "envs/stringtie.yaml"
@@ -302,7 +338,8 @@ if RNA_seq_module_enabled:
                     {input.sample_transcriptome} 2> {log}"
     else:
         rule RNA_07_trscrpt_MergeSampleWiseTranscriptomes:
-            input: sample_transcriptome=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=BAM_SAMPLES,mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=FASTQ_SAMPLES,mode=transcriptome_assembly_mode)] for x in subl]
+            input: sample_transcriptome=lambda wildcards: [x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=SAMPLE_DICT[('bam',wildcards.study_group)] if 'bam' in RNAseq_file_format else [],mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=SAMPLE_DICT[('fastq',wildcards.study_group)] if 'fastq' in RNAseq_file_format else [],mode=transcriptome_assembly_mode)] for x in subl]
+            #input: sample_transcriptome=[x for subl in [expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/bam_inputs/{sample}.StringTie_{mode}.gtf",sample=BAM_SAMPLES,mode=transcriptome_assembly_mode),expand("out/{{study_group}}/haplotype-{{htype}}/transcriptome/fastq_inputs/{sample}.StringTie_{mode}.gtf",sample=FASTQ_SAMPLES,mode=transcriptome_assembly_mode)] for x in subl]
             output: "out/{study_group}/haplotype-{htype}/transcriptome/transcriptome.gtf"
             log: "out/logs/{study_group}/h-{htype}.merge.txt"
             conda: "envs/stringtie.yaml"
@@ -361,13 +398,12 @@ rule main_01a_GTFtoAlignmentGFF3:
 rule main_02_ORF_CalculateCandidateORFs:
     input: "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta"
     output: "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir/longest_orfs.pep",checkpoint_dir=directory("out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir.__checkpoints_longorfs/")
-    log: "../../logs/{study_group}/h-{htype}.{track}.LongOrfs.txt"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="LongOrfs", o="out/logs/LongOrfs.out", eo="out/logs/LongOrfs.err"
     shell: "rm -r {output.checkpoint_dir}; cd out/{wildcards.study_group}/haplotype-{wildcards.htype}/{wildcards.track}; \
         TransDecoder.LongOrfs \
         -t transcripts.fasta \
-        -m {ORF} 2> {log}"
+        -m {ORF}"
 
 PGM_DBNAME = os.path.join(os.path.dirname(STOCK_PROTEOME_FASTA),config['stock_references']['proteome']['fasta'])
 rule main_02a_ORF_MakeBlastDB:
@@ -401,14 +437,13 @@ rule main_03_ORF_PredictCodingRegions:
         fasta="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta",
         blastp="out/{study_group}/haplotype-{htype}/{track}/blastp.outfmt6"
     output: "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.pep",checkpoint_dir=directory("out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir.__checkpoints/"),gff3="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.gff3"
-    log: "../../logs/{study_group}/h-{htype}.{track}.Predict.txt"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=18]'", J="Predict", o="out/logs/Predict.out", eo="out/logs/Predict.err"
     shell: "rm -r {output.checkpoint_dir};cd out/{wildcards.study_group}/haplotype-{wildcards.htype}/{wildcards.track}; {PG2_HOME}/utils/transdecoder/TransDecoder.Predict.IGNORE_OVERLAP \
         -t transcripts.fasta \
         --retain_long_orfs_length {nuc_ORF} \
         -v \
-        --retain_blastp_hits blastp.outfmt6 2> {log}"
+        --retain_blastp_hits blastp.outfmt6"
 
 rule main_04_GenerateCDSinGenomeCoords:
     input: gff3="out/{study_group}/haplotype-{htype}/{track}/transcripts.gff3",
@@ -532,25 +567,90 @@ rule merge_lifted_bedFiles:
 
 ### MaxQuant Workflow ###
 
-RAW_DIR = config['input_files']['proteomics_module']['LCMS_file_directory']
-assert RAW_DIR is not None, "missing LCMS_file_directory!"
+EXPERIMENT_RAW_DIR = config['input_files']['proteomics_module']['experiment_LCMS_file_directory']
+assert EXPERIMENT_RAW_DIR is not None, "missing LCMS_file_directory!"
+CONTROL_RAW_DIR = config['input_files']['proteomics_module']['optional_control_LCMS_file_directory'] or ""
 PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "/MaxQuant/mqpar_template.xml"
+MQ = PG2_HOME + "/MaxQuant/bin/MaxQuantCmd.exe"
 
+RAW_FILE_DICT=dict()
+RAW_FILES=[os.path.join(EXPERIMENT_RAW_DIR,f) for f in os.listdir(EXPERIMENT_RAW_DIR) if f.endswith(".raw")]
+E_RAW_FILES=[os.path.join(EXPERIMENT_RAW_DIR,f) for f in os.listdir(EXPERIMENT_RAW_DIR) if f.endswith(".raw")]
+#RAW_FILE_DICT['experiment']=E_RAW_FILES
+RAW_FILE_DICT[exp_group]=E_RAW_FILES
+if CONTROL_RAW_DIR: 
+    C_RAW_FILES=[os.path.join(CONTROL_RAW_DIR,f) for f in os.listdir(CONTROL_RAW_DIR) if f.endswith(".raw")]
+    #RAW_FILE_DICT['control']=C_RAW_FILES
+    RAW_FILE_DICT[ctrl_group]=C_RAW_FILES
 
-RAW_FILES=[f for f in os.listdir(RAW_DIR) if f.endswith(".raw")]
-
+MQ_THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
+"""
 rule copyRawFiles:
-    input: raw=os.path.join(RAW_DIR,'{raw_file}'),fasta='out/{study_group}/combined.proteome.unique.fasta'
-    output: temp("out/{study_group}/MaxQuant/{raw_file}")
+    input: raw= lambda wildcards:RAW_FILE_DICT[wildcards.study_group]
+    #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
+    #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
+    #input: raw=os.path.join(RAW_DIR,'{raw_file}'),fasta='out/{study_group}/combined.proteome.unique.fasta'
+    #output: expand("out/{{study_group}}/MaxQuant/{raw_file}.raw",raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]])
+    output: directory("out/{study_group}/MaxQuant/rawfiles")
+    #output: "out/{study_group}/MaxQuant/{raw_file}.raw"
     params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="copy_raw", o="out/logs/copy_raw.out", eo="out/logs/copy_raw.err"
     shell: "cp {input.raw} {output}"
-
+"""
 rule mqpar_conversion:
     input: fasta="out/{study_group}/combined.proteome.unique.fasta"
     output: "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml"
     params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="mqpar_conversion", o="out/logs/mqpar_conversion.out", eo="out/logs/mqpar_conversion.err"
     run:
         import os
+        with open(PAR) as oldMQPar, open(output[0],"w") as newMQPar:
+            param_group_line=False
+            param_group_list=[]
+            RAW_FILES = RAW_FILE_DICT[wildcards.study_group]
+            for line in oldMQPar:
+                if '<fastaFilePath>' not in line and '<tempFolder>' not in line and '<fixedCombinedFolder>' not in line and '<numThreads>' not in line and '<string>temp</string>' not in line and '<fixedSearchFolder></fixedSearchFolder>' not in line:
+                    newMQPar.write(line)
+                if '<FastaFileInfo>' in line:
+                    newMQPar.write("<fastaFilePath>" + os.getcwd() + "/"+ input.fasta + "</fastaFilePath>\n")
+                if '<maxQuantVersion>' in line:
+                    newMQPar.write("<tempFolder>" +  TMP + "</tempFolder>\n")
+                if '</fastaFilesFirstSearch>' in line:
+                    newMQPar.write("<fixedSearchFolder>" +  os.getcwd() + "/out/{}/MaxQuant/search".format(wildcards.study_group) + "</fixedSearchFolder>\n")
+                if '<emailFromAddress>' in line:
+                    newMQPar.write("<fixedCombinedFolder>"  + os.getcwd() + "/out/{}/MaxQuant".format(wildcards.study_group) + "</fixedCombinedFolder>\n")
+                if '<pluginFolder></pluginFolder>' in line:
+                    newMQPar.write("<numThreads>"+ MQ_THREADS +"</numThreads>\n")
+                if '<filePaths>' in line:
+                    for k in range(len(RAW_FILES)):
+                        newMQPar.write("<string>" + RAW_FILES[k] + "</string>\n")
+                if '<experiments>' in line:
+                    for k in range(len(RAW_FILES)-1):
+                        newMQPar.write("<string></string>\n")
+                if '<fractions>' in line:
+                    for k in range(len(RAW_FILES)-1):
+                        newMQPar.write("<short>32767</short>\n")
+                if '<ptms>' in line:
+                    for k in range(len(RAW_FILES)-1):
+                        newMQPar.write("<boolean>False</boolean>\n")
+                if '<paramGroupIndices>' in line:
+                    for k in range(len(RAW_FILES)-1):
+                        newMQPar.write("<int>0</int>\n")
+                if '<parameterGroup>' in line:
+                    param_group_line=True
+                if param_group_line: 
+                    param_group_list.append(line.strip())
+                if '</parameterGroup>' in line:
+                    param_group_line=False
+                    additional_proteases=[]
+                    for i in range(1,len(config['parameters']['proteomics_module']['paramGroups'].keys())+1):
+                        protease=config['parameters']['proteomics_module']['paramGroups'][i]['protease']
+                        if "Trypsin/P" not in protease: 
+                            print(protease)
+                            additional_proteases.append(protease)
+                    for p in additional_proteases:
+                        for param_line in param_group_list:
+                            if 'Trypsin/P' in param_line: newMQPar.write(param_line.replace('Trypsin/P',p)+'\n')
+                            else: newMQPar.write(param_line+'\n')
+        """
         with open(PAR) as oldMQPar, open(output[0],"w") as newMQPar:
             for line in oldMQPar:
                 if '<fastaFilePath>' not in line and '<tempFolder>' not in line and '<fixedCombinedFolder>' not in line and '<numThreads>' not in line and '<string>temp</string>' not in line and '<fixedSearchFolder></fixedSearchFolder>' not in line:
@@ -580,15 +680,14 @@ rule mqpar_conversion:
                 if '<paramGroupIndices>' in line:
                     for k in range(len(RAW_FILES)-1):
                         newMQPar.write("<int>0</int>\n")
-
-
-MQ = PG2_HOME + "/MaxQuant/bin/MaxQuantCmd.exe"
-THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
+        """
 rule maxQuant:
-    input: expand("out/{{study_group}}/MaxQuant/{raw_file}",raw_file=RAW_FILES), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml"
+    #input: expand("out/{{study_group}}/MaxQuant/{raw_file}",raw_file=RAW_FILES), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml"
+    input: par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
+    #input: lambda wildcards: expand("out/{{study_group}}/MaxQuant/{raw_file}.raw",raw_file=[os.path.basename(x).split('.')[0] for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
     output: "out/{study_group}/MaxQuant/combined/txt/summary.txt"
     singularity: "docker://mono:5.12.0.226"
-    params: n=THREADS, J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(THREADS), o="out/logs/mq.out", eo="out/logs/mq.err"
+    params: n=lambda wildcards: str(max(16,len(RAW_FILE_DICT[wildcards.study_group]))), J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(MQ_THREADS), o="out/logs/{study_group}/mq.out", eo="out/logs/{study_group}/mq.err"
     shell: "mono {MQ} {input.par}"
 
 

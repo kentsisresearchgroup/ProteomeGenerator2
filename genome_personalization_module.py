@@ -67,15 +67,15 @@ subworkflow WGS_variant_calling:
 # *we use the included dev branch of bcftools because the latest release (1.9) has a bug in bcftools consensus*
 if (not just_called_variants) and calling_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf=WGS_variant_calling("out/WGS/variant_calling/{study_group}/{cohort}.{study_group}.variant_calling_finished.vcf.gz")
-        output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{sample_grou}/{cohort}.h-{htype}^{chr}.chain")
+        input: vcf=WGS_variant_calling("out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz")
+        output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{study_group}/{htype}^{chr}.out", eo="out/logs/chr-wise/{study_group}/{htype}^{chr}.err", \
                 study_grp=COHORT+'_{study_group}'
         conda: "envs/bcftools.yaml"
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.study_grp} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.vcf} > {output.fasta}"
 elif just_called_variants:
     rule genome_01_CreateChrWiseCustomRef:
-        input: vcf="out/WGS/variant_calling/{study_group}/{cohort}.{study_group}.variant_calling_finished.vcf.gz"
+        input: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz"
         output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.chain")
         params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{study_group}/{htype}^{chr}.out", eo="out/logs/chr-wise/{study_group}/{htype}^{chr}.err", \
                 study_grp=COHORT+'_{study_group}'
@@ -94,9 +94,9 @@ else:
             OUTPUT={output.merged_vcf}"
     rule genome_01_CreateChrWiseCustomRef:
         input: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
-        output: fasta=temp("out/custom_ref/chr_split/experiment/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/experiment/{cohort}.h-{htype}^{chr}.chain")
+        output: fasta=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.fa"),chain=temp("out/custom_ref/chr_split/{study_group}/{cohort}.h-{htype}^{chr}.chain")
         conda: "envs/bcftools.yaml"
-        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/experiment/{htype}^{chr}.out", eo="out/logs/chr-wise/experiment/{htype}^{chr}.err",study_grp=COHORT+'_experiment'
+        params: n="1", R="'rusage[mem=4]'", J="chr-wise_customRef", o="out/logs/chr-wise/{study_group}/{htype}^{chr}.out", eo="out/logs/chr-wise/{study_group}/{htype}^{chr}.err",study_grp=COHORT+'_{study_group}'
         shell: "samtools faidx {STOCK_GENOME_FASTA} {wildcards.chr} | bcftools consensus -s {params.study_grp} -H {wildcards.htype} -p {wildcards.htype}_ -c {output.chain} {input.merged_vcf} > {output.fasta}"
 
 rule genome_02a_MergeChrWiseCustomRef:
