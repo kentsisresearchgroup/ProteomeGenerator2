@@ -18,5 +18,7 @@ dependencies:
  - ucsc-liftover=377
  - samtools=1.9
  - dfam
- - fastp
+ #- fastp
  - picard=2.18.21
+ #- snpeff=4.3.1t
+ - snpeff=4.5covid19

@@ -71,7 +71,8 @@ if RNA_seq_module_enabled:
 	#SAMPLE_DICT[('fastq','experiment')]=list(set(EXPERIMENT_SAMPLES)-set(BAM_SAMPLES))
 	SAMPLE_DICT[('fastq',ctrl_group)]=list(set(CONTROL_SAMPLES)-set(BAM_SAMPLES))
         #SAMPLE_DICT[('fastq','control')]=list(set(CONTROL_SAMPLES)-set(BAM_SAMPLES))
-
+    
+    STUDY_GROUPS = [exp_group, ctrl_group] if len(CONTROL_SAMPLES)>0 else [exp_group]
     RNA_SAMPLES=BAM_SAMPLES+FASTQ_SAMPLES
     
     if config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['assemble_transcriptome_with_StringTie']:
@@ -105,11 +106,12 @@ else:
     prebuilt_STAR_index_dir = config['stock_references']['genome']['optional_aligner_indices']['STAR_index_dir']
     PG2_STAR_INDEX = os.path.join(prebuilt_STAR_index_dir,'SA') if prebuilt_STAR_index_dir else "out/custom_ref/{}.{{study_group}}.h-{{htype}}.STARindex/SA".format(os.path.basename(PG2_GENOME_FASTA).strip('.fa'))
 
-
+CHROMOSOMES=['chr1','chr2','chr3','chr4','chr5','chr6','chr7','chr8','chr9','chr10','chr11','chr12','chr13','chr14','chr15','chr16','chr17','chr18','chr19','chr20','chr21','chr22','chrX']
  
 snakemake.utils.makedirs('out/benchmarks')
 snakemake.utils.makedirs('out/logs/chr-wise')
 snakemake.utils.makedirs('out/logs/RNAseq')
+snakemake.utils.makedirs('out/logs/proteomics')
 
 ### End path utils ###
 
@@ -118,13 +120,17 @@ snakemake.utils.makedirs('out/logs/RNAseq')
 
 # Snakemake terminates when these files are present
 rule all:
-    input: "out/{study_group}/combined.proteome.unique.fasta", "out/{study_group}/combined.proteome.bed", "out/{study_group}/MaxQuant/combined/txt/summary.txt"
+    #input: expand("out/{study_group}/novel_analysis/missense/{chr}.missense.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES)
+    input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/frameshifts/combined.frameshifts.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/missense/combined.missense.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/insertions/combined.insertions.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/deletions/combined.deletions.map",study_group=STUDY_GROUPS)
+    #input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/frameshifts/{chr}.frameshifts.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/missense/{chr}.missense.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/insertions/{chr}.insertions.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/deletions/{chr}.deletions.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES)
 
 # Subworkflows are invoked on rule inputs, and are executed first
 subworkflow create_custom_genome:
     snakefile: "genome_personalization_module.py"
     configfile: workflow.overwrite_configfile
     workdir: WD
+
+include: 'novel_analysis.py'
 
 ### Transcriptome Assembly Workflow ###
 
@@ -171,7 +177,7 @@ if RNA_seq_module_enabled and 'bam' in RNAseq_file_format:
         benchmark: "out/benchmarks/{study_group}.h-{htype}.{sample}.{readgroup}.STAR.json"
         log: "out/logs/{study_group}/h-{htype}.{sample}.{readgroup}.STAR.txt"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/{study_group}/STAR_{sample}_bam.out", eo="out/logs/{study_group}/STAR_{sample}_bam.err", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}_{readgroup}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}_{readgroup}.STAR.err", \
                 strand_field=lambda wildcards: 'None' if config['input_files']['RNA-seq_module']['bam_inputs'][wildcards.sample]['data_is_stranded'] else 'intronMotif', \
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}.{}'.format(wildcards.readgroup,wildcards.sample,uuid.uuid4()))
         shell: "STAR \
@@ -215,7 +221,7 @@ if RNA_seq_module_enabled and 'fastq' in RNAseq_file_format:
         benchmark: "out/benchmarks/{study_group}.h-{htype}.{sample}.{readgroup}.STAR.json"
         log: "out/logs/{study_group}/h-{htype}.{sample}.{readgroup}.STAR.txt"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/{study_group}/STAR_{sample}_fq.out", eo="out/logs/{study_group}/STAR_{sample}_fq.err", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="32", R="'span[hosts=1] rusage[mem=4]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}_{readgroup}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}_{readgroup}.STAR.err", \
                 strand_field=lambda wildcards: 'None' if config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['data_is_stranded'] else 'intronMotif', \
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}.{}'.format(wildcards.readgroup,wildcards.sample,uuid.uuid4()))
         shell: "STAR \
@@ -259,7 +265,7 @@ max_allowed_multimaps = config['parameters']['RNA-seq_module']['read_filtering']
 bamflag_filters = config['parameters']['RNA-seq_module']['read_filtering']['advanced']['filter_out_bamFlags']
 rule RNA_02_FilterLowQualityReads:
     input: bam="out/{study_group}/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.sortedByCoord.out.bam"
-    output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.trimmed.out.bam"
+    output: temp("out/{study_group}/haplotype-{htype}/RNAseq/alignment/{intype}/{sample}.{readgroup}.Aligned.trimmed.out.bam")
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="filter", o="out/logs/filter.out", eo="out/logs/filter.err", min_mapq=(255 if max_allowed_multimaps==1 else int(-10*math.log(1-(1/max_allowed_multimaps),10))), flags=bamflag_filters 
     shell: "samtools view -b -h \
@@ -538,11 +544,11 @@ if creating_custom_genome or continuing_after_genome_personalization:
     CHAINSWAP=os.path.join(PG2_HOME, config['non-conda_packages']['chainSwap'])
     rule create_reverse_chains:
         input: (create_custom_genome(PG2_GENOME_CHAIN) if creating_custom_genome else PG2_GENOME_CHAIN)
-        output: "out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
+        output: "out/custom_ref/"+COHORT+".{study_group}_H{htype}.chain.reverse"
         params: n="1", R="'rusage[mem=4]'", J="reverse_chains", o="out/logs/{study_group}/h-{htype}.reverse_chains.out", eo="out/logs/{study_group}/h-{htype}.reverse_chains.err"
         shell: "{CHAINSWAP} {input} {output}"
     rule liftOver_bed_coords:
-        input: bed="out/{study_group}/haplotype-{htype}/{track}/proteome_preLiftBack.bed", chain="out/custom_ref/"+COHORT+"_H{htype}.chain.reverse"
+        input: bed="out/{study_group}/haplotype-{htype}/{track}/proteome_preLiftBack.bed", chain="out/custom_ref/"+COHORT+".{study_group}_H{htype}.chain.reverse"
         output: "out/{study_group}/haplotype-{htype}/{track}/proteome.bed"
         conda: "envs/myenv.yaml"
         params: n="1", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.err", tmp_bed="out/{study_group}/haplotype-{htype}/{track}/proteome_temp.bed"
@@ -571,35 +577,39 @@ PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOM
 MQ = PG2_HOME + "/MaxQuant/bin/MaxQuantCmd.exe"
 
 RAW_FILE_DICT=dict()
+RAW_DIR_DICT=dict()
 RAW_FILES=[os.path.join(EXPERIMENT_RAW_DIR,f) for f in os.listdir(EXPERIMENT_RAW_DIR) if f.endswith(".raw")]
 E_RAW_FILES=[os.path.join(EXPERIMENT_RAW_DIR,f) for f in os.listdir(EXPERIMENT_RAW_DIR) if f.endswith(".raw")]
 #RAW_FILE_DICT['experiment']=E_RAW_FILES
 RAW_FILE_DICT[exp_group]=E_RAW_FILES
+RAW_DIR_DICT[exp_group]=EXPERIMENT_RAW_DIR
 if CONTROL_RAW_DIR: 
     C_RAW_FILES=[os.path.join(CONTROL_RAW_DIR,f) for f in os.listdir(CONTROL_RAW_DIR) if f.endswith(".raw")]
     #RAW_FILE_DICT['control']=C_RAW_FILES
     RAW_FILE_DICT[ctrl_group]=C_RAW_FILES
+    RAW_DIR_DICT[ctrl_group]=CONTROL_RAW_DIR
 
 MQ_THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
-"""
+
 rule copyRawFiles:
-    input: raw= lambda wildcards:RAW_FILE_DICT[wildcards.study_group]
+    #input: raw= lambda wildcards:RAW_FILE_DICT[wildcards.study_group]
+    input: raw= lambda wildcards: os.path.join(RAW_DIR_DICT[wildcards.study_group],wildcards.raw_file)
     #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
     #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
     #input: raw=os.path.join(RAW_DIR,'{raw_file}'),fasta='out/{study_group}/combined.proteome.unique.fasta'
     #output: expand("out/{{study_group}}/MaxQuant/{raw_file}.raw",raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]])
-    output: directory("out/{study_group}/MaxQuant/rawfiles")
+    output: "out/{study_group}/MaxQuant/rawfiles/{raw_file}"
     #output: "out/{study_group}/MaxQuant/{raw_file}.raw"
-    params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="copy_raw", o="out/logs/copy_raw.out", eo="out/logs/copy_raw.err"
-    shell: "cp {input.raw} {output}"
-"""
+    params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="copy_raw", o="out/logs/copy_raw.out", eo="out/logs/copy_raw.err", file_dir=directory("out/{study_group}/MaxQuant/rawfiles")
+    shell: "ln -s {input.raw} {params.file_dir}"
+
 rule mqpar_conversion:
-    input: fasta="out/{study_group}/combined.proteome.unique.fasta"
+    input: fasta="out/{study_group}/combined.proteome.unique.fasta",par=PAR
     output: "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml"
     params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="mqpar_conversion", o="out/logs/mqpar_conversion.out", eo="out/logs/mqpar_conversion.err"
     run:
         import os
-        with open(PAR) as oldMQPar, open(output[0],"w") as newMQPar:
+        with open(input.par) as oldMQPar, open(output[0],"w") as newMQPar:
             param_group_line=False
             param_group_list=[]
             RAW_FILES = RAW_FILE_DICT[wildcards.study_group]
@@ -620,33 +630,51 @@ rule mqpar_conversion:
                     for k in range(len(RAW_FILES)):
                         newMQPar.write("<string>" + RAW_FILES[k] + "</string>\n")
                 if '<experiments>' in line:
-                    for k in range(len(RAW_FILES)-1):
+                    for k in range(len(RAW_FILES)):
                         newMQPar.write("<string></string>\n")
                 if '<fractions>' in line:
-                    for k in range(len(RAW_FILES)-1):
+                    for k in range(len(RAW_FILES)):
                         newMQPar.write("<short>32767</short>\n")
                 if '<ptms>' in line:
-                    for k in range(len(RAW_FILES)-1):
+                    for k in range(len(RAW_FILES)):
                         newMQPar.write("<boolean>False</boolean>\n")
                 if '<paramGroupIndices>' in line:
-                    for k in range(len(RAW_FILES)-1):
-                        newMQPar.write("<int>0</int>\n")
+                    param_groups = config['input_files']['proteomics_module']['paramGroups'].keys()
+                    substring_group_dict = {config['input_files']['proteomics_module']['paramGroups'][group]['uniquely_identifying_file_substring']: group for group in param_groups}
+                    for k in range(len(RAW_FILES)):
+                        if len(param_groups)==1: newMQPar.write("<int>0</int>\n")
+                        else: 
+                            group_assignments=0
+                            print(substring_group_dict)
+                            print(os.path.basename(RAW_FILES[k]))
+                            for substr in substring_group_dict:
+                                if substr in os.path.basename(RAW_FILES[k]): 
+                                    group_assignments+=1
+                                    newMQPar.write("<int>{}</int>\n".format(substring_group_dict[substr]))
+                            assert group_assignments == 1, "File {} does not map to a unique parameter group (assigned groups == {}); please double check the input_files->proteomics_module->paramGroups-><group_#>->uniquely_identifying_file_substring parameter".format(RAW_FILES[k],group_assignments)
                 if '<parameterGroup>' in line:
                     param_group_line=True
-                if param_group_line: 
-                    param_group_list.append(line.strip())
+                if param_group_line:
+                    param_group_list.append(line)
+                    if '<enzymes>' in line:
+                        newMQPar.write("<string>{}</string>\n".format(config['input_files']['proteomics_module']['paramGroups'][0]['protease']))
+                    if '<fixedModifications>' in line:
+                        [newMQPar.write("<string>{}</string>\n".format(x)) for x in config['input_files']['proteomics_module']['paramGroups'][0]['fixedMods']] 
+                    if '<variableModifications>' in line:
+                        [newMQPar.write("<string>{}</string>\n".format(x)) for x in config['input_files']['proteomics_module']['paramGroups'][0]['variableMods']] 
                 if '</parameterGroup>' in line:
                     param_group_line=False
                     additional_proteases=[]
-                    for i in range(1,len(config['parameters']['proteomics_module']['paramGroups'].keys())+1):
-                        protease=config['parameters']['proteomics_module']['paramGroups'][i]['protease']
-                        if "Trypsin/P" not in protease: 
-                            print(protease)
-                            additional_proteases.append(protease)
-                    for p in additional_proteases:
+                    for i in range(1,len(config['input_files']['proteomics_module']['paramGroups'].keys())):
                         for param_line in param_group_list:
-                            if 'Trypsin/P' in param_line: newMQPar.write(param_line.replace('Trypsin/P',p)+'\n')
-                            else: newMQPar.write(param_line+'\n')
+                            newMQPar.write(param_line)
+                            if '<enzymes>' in param_line:
+                                newMQPar.write("<string>{}</string>\n".format(config['input_files']['proteomics_module']['paramGroups'][i]['protease']))
+                            if '<fixedModifications>' in param_line:
+                                [newMQPar.write("<string>{}</string>\n".format(x)) for x in config['input_files']['proteomics_module']['paramGroups'][i]['fixedMods']]
+                            if '<variableModifications>' in param_line:
+                                [newMQPar.write("<string>{}</string>\n".format(x)) for x in config['input_files']['proteomics_module']['paramGroups'][i]['variableMods']]
+
         """
         with open(PAR) as oldMQPar, open(output[0],"w") as newMQPar:
             for line in oldMQPar:
@@ -680,11 +708,11 @@ rule mqpar_conversion:
         """
 rule maxQuant:
     #input: expand("out/{{study_group}}/MaxQuant/{raw_file}",raw_file=RAW_FILES), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml"
-    input: par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
-    #input: lambda wildcards: expand("out/{{study_group}}/MaxQuant/{raw_file}.raw",raw_file=[os.path.basename(x).split('.')[0] for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
-    output: "out/{study_group}/MaxQuant/combined/txt/summary.txt"
+    #input: par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
+    input: lambda wildcards: expand("out/{study_group}/MaxQuant/rawfiles/{raw_file}",study_group=wildcards.study_group, raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
+    output: "out/{study_group}/MaxQuant/combined/txt/summary.txt","out/{study_group}/MaxQuant/combined/txt/peptides.txt","out/{study_group}/MaxQuant/combined/txt/proteinGroups.txt"
     singularity: "docker://mono:5.12.0.226"
-    params: n=lambda wildcards: str(max(16,len(RAW_FILE_DICT[wildcards.study_group]))), J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(MQ_THREADS), o="out/logs/{study_group}/mq.out", eo="out/logs/{study_group}/mq.err"
+    params: n=lambda wildcards: str(max(16,len(RAW_FILE_DICT[wildcards.study_group]))), J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(MQ_THREADS), o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
     shell: "mono {MQ} {input.par}"
 
 

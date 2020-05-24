@@ -41,7 +41,7 @@ if input_file_format == 'bam':
     rule wgs_01bam_RevertToUnmappedBAM:
         input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
         output: temp("out/WGS/{sample}.{readgroup}.unmapped.bam")
-        params: n="16", R="'span[hosts=1] rusage[mem=10]'", java_xmx=str(160*10-4), max_records_in_ram=str(25000000), o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
+        params: n="16", R="'span[hosts=1] rusage[mem=10]'", java_xmx=str(16*10-4), max_records_in_ram=str(25000000), o="out/logs/revert_bam.out", eo="out/logs/revert_bam.err", J="revert_bam"
         conda: "envs/bwa_picard_samtools.yaml"
         shell: "picard -Xmx{params.java_xmx}g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} O={output} \
                   MAX_RECORDS_IN_RAM={params.max_records_in_ram} \
@@ -65,7 +65,7 @@ elif input_file_format == 'fastq':
 
 rule wgs_02_BwaAndSortAndMergeBamAlignment:
     input:  ubam="out/WGS/{sample}.{readgroup}.unmapped.bam", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
-    output: "out/WGS/{sample}.{readgroup}.aligned_sorted_ubam-merged.bam"
+    output: temp("out/WGS/{sample}.{readgroup}.aligned_sorted_ubam-merged.bam")
     params: n="32", R="'span[hosts=1] rusage[mem=2]'", java_xmx=str(32*2), max_records_in_ram=str(250000*32*2), o="out/logs/bwa_n_mergebams_{sample}_{readgroup}.out", eo="out/logs/bwa_n_mergebams_{sample}_{readgroup}.err", J="bwa_mergebams"
     conda: "envs/bwa_picard_samtools.yaml"
     shell: "samtools fastq -0 /dev/null {input.ubam} | bwa mem -M -p -t {params.n} {STOCK_GENOME_FASTA} - | samtools view -Shu -@ {params.n} - | \

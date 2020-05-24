@@ -14,6 +14,7 @@ except: raise TypeError("ERROR: Specified inputs do not match the specified inpu
 COHORT = config['input_files']['genome_personalization_module']['cohort_or_organism_name']
 TUMOR_SAMPLES=[]
 NORMAL_SAMPLES=[]
+NONMATCHED_SAMPLES=[]
 sample_dict = dict(config['input_files']['genome_personalization_module'][input_file_format+'_inputs'])
 for sample_name in sample_dict.keys():
     if sample_dict[sample_name]['matched_sample_params']['is_matched_sample'] and sample_dict[sample_name]['matched_sample_params']['tumor_or_normal']=='tumor': TUMOR_SAMPLES.append(sample_name)
@@ -21,6 +22,7 @@ for sample_name in sample_dict.keys():
     #elif sample_dict[sample_name]['matched_sample_params']['tumor_or_normal']=='normal': 
     else: 
         NORMAL_SAMPLES.append(sample_name)
+        NONMATCHED_SAMPLES.append(sample_name)
     #else: assert False, "This should never happen!"
 ALL_SAMPLES=TUMOR_SAMPLES + NORMAL_SAMPLES
 
@@ -37,7 +39,7 @@ for sample in NORMAL_SAMPLES:
 
 VARIANT_CALLING_MODES=[]
 if config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['call_germline_variants_with_GATK4_HaplotypeCaller']==True: VARIANT_CALLING_MODES.append('germline')
-if NORMAL_SAMPLES and config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['if_inputs_are_matched_tumor-normal_samples']['call_somatic_variants_with_GATK4_Mutect2']==True: VARIANT_CALLING_MODES.append('somatic')
+if config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['call_somatic_variants_with_GATK4_Mutect2']==True: VARIANT_CALLING_MODES.append('somatic')
 
 running_preprocessing = config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['run_pre-processing_steps']
 just_ran_WGS_preprocessing = config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['continuation']['just_ran_PG2_preprocessing']
@@ -62,26 +64,14 @@ rule var_00_ScatterVariantCallingIntervals:
     shell: "gatk --java-options '-Xmx8g' SplitIntervals \
               -R {STOCK_GENOME_FASTA} -L {input} -scatter {NUM_VARIANT_INTERVALS} -O out/{wildcards.study_group}/variant_calling/intervals"
 
-"""
-if (not just_ran_WGS_preprocessing) and running_preprocessing:
-    rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam=WGS_preprocessing("out/{study_group}/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam"),bai=WGS_preprocessing("out/{study_group}/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai")
-        output: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",bai="out/{study_group}/variant_calling/{sample}.analysis_ready.bam.bai"
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
-        run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
-            command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
-            shell(command)
-"""
 if (not just_ran_WGS_preprocessing) and running_preprocessing:
     rule var_00_TumorSymlinkToPreProcessingOutputBam:
         input: bam=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=TUMOR_SAMPLES)),bai=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=TUMOR_SAMPLES))
         output: bam="out/tumor/variant_calling/{sample}.analysis_ready.bam",bai="out/tumor/variant_calling/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
+            in_bam_path = os.path.abspath(str(input.bam))
+            in_bai_path = os.path.abspath(str(input.bai))
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
             shell(command)
     rule var_00_SymlinkToPreProcessingOutputBam:
@@ -89,8 +79,8 @@ if (not just_ran_WGS_preprocessing) and running_preprocessing:
         output: bam=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment']),bai=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam.bai",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment'])
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
+            in_bam_path = os.path.abspath(str(input.bam))
+            in_bai_path = os.path.abspath(str(input.bai))
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
             shell(command)
 elif just_ran_WGS_preprocessing:
@@ -99,26 +89,17 @@ elif just_ran_WGS_preprocessing:
         output: bam="out/tumor/variant_calling/{sample}.analysis_ready.bam",bai="out/tumor/variant_calling/{sample}.analysis_ready.bam.bai"
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
+            in_bam_path = os.path.abspath(str(input.bam))
+            in_bai_path = os.path.abspath(str(input.bai))
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
             shell(command)
     rule var_00_SymlinkToPreProcessingOutputBam:
         input: bam=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=NORMAL_SAMPLES),bai=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=NORMAL_SAMPLES)
         output: bam=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment']),bai=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam.bai",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment'])
         params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
-        run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
-            command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
-            shell(command)
-    rule var_00_SymlinkToPreProcessingOutputBam:
-        input: bam="out/{study_group}/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/{study_group}/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
-        output: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",bai="out/{study_group}/variant_calling/{sample}.analysis_ready.bam.bai"
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
-        run: 
-            in_bam_path = os.path.abspath(input.bam)
-            in_bai_path = os.path.abspath(input.bai)
+        run:
+            in_bam_path = os.path.abspath(str(input.bam))
+            in_bai_path = os.path.abspath(str(input.bai))
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
             shell(command)
 
@@ -225,21 +206,20 @@ rule var_germ_07t_CombineTumorSampleGermlineVCFs:
     output: "out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf.gz"
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
-        J="merge_tumor_vcfs", int_vcf="out/WGS/variant_calling/tumor/{cohort}.tumor.germline_finished.vcf"
+        J="merge_tumor_vcfs", int_vcf="out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf"
     conda: "envs/bcftools.yaml"
     shell: "bcftools concat -a -D {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
     #shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_germ_07n_CombineSampleGermlineVCFs:
     input: expand("out/{{study_group}}/variant_calling/{sample}.germline_finished.name_consolidated.vcf.gz",sample=NORMAL_SAMPLES)
-    output: "out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"
+    output: "out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz","out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz.tbi"
     wildcard_constraints: study_group='control|experiment|normal'
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_normal_vcfs.out", eo="out/logs/merge_normal_vcfs.err", \
-        J="merge_normal_vcfs", int_vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"
+        J="merge_normal_vcfs", int_vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf"
     conda: "envs/bcftools.yaml"
     shell: "bcftools concat -a -D {input} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
-    #shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 
 ## PINDEL RULES ##
@@ -283,32 +263,37 @@ rule Pindel2Vcf:
 
 ## BEGIN Mutect2 RULES ##
 
+SOMATIC_SAMPLE_DICT=dict()
+SOMATIC_SAMPLE_DICT['tumor']=TUMOR_SAMPLES
+SOMATIC_SAMPLE_DICT['experiment']=NONMATCHED_SAMPLES
+SOMATIC_SAMPLE_DICT['normal']=[]
 GNOMAD_AF=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db']
-if NORMAL_SAMPLES is not None:
+if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal']:
     rule var_som_01_Mutect2_matched_tumor_normal:
-        input: tumor=expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
+        input: tumor=expand("out/tumor/variant_calling/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/normal/variant_calling/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
         output: vcf=temp("out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
         params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_matched"
         conda: "envs/gatk4.1.5.0.yaml"
-        shell: "gatk --java-options '-Xmx32g' Mutect2 -R {input.ref} -O {output.vcf} \
+        shell: "gatk --java-options '-Xmx16g' Mutect2 -R {input.ref} -O {output.vcf} \
                   $(echo '{input.tumor}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{input.normal}' | sed -r 's/[^ ]+/-I &/g') \
                   $(echo '{NORMAL_SAMPLES}' | sed -r 's/[^ ]+/-normal &/g') \
                   --germline-resource {input.gnomad_af} \
                   --native-pair-hmm-threads {params.n} \
-                  -L {input.interval_list} \
-                  -DF GoodCigarReadFilter"
-else:
+                  -L {input.interval_list}"
+elif 'somatic' in VARIANT_CALLING_MODES:
     rule var_som_01_Mutect2_without_matched_normal:
-        input: tumor=expand("out/{study_group}/variant_calling/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
-        output: vcf="out/{study_group}/variant_calling/Mutect2-scattered/{cohort}..mutect2.{interval}.vcf",stats="out/{study_group}/variant_calling/cohort/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats"
+        input: sample=expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=NONMATCHED_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
+        output: vcf="out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf",stats="out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats"
         params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
-            o="out/logs/mutect2.out", eo="out/logs/mutect2.err", \
+            o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_unmatched"
-        conda: "envs/gatk4.yaml"
-        shell: "gatk --java-options '-Xmx16g' Mutect2 -R {input.ref} -I {input.sample} -tumor {TUMOR_SAMPLES} --germline-resource {input.gnomad_af} -L {input.interval_list}"
+        conda: "envs/gatk4.1.5.0.yaml"
+        shell: "gatk --java-options '-Xmx16g' Mutect2 -R {input.ref} -O {output.vcf} \
+                $(echo '{input.sample}' | sed -r 's/[^ ]+/-I &/g') \
+                --germline-resource {input.gnomad_af} -L {input.interval_list}"
 
 rule var_som_02_MergeScatteredMutect2VCFs:
     input: vcf=expand("out/{{study_group}}/variant_calling/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
@@ -333,7 +318,7 @@ rule var_som_02a_MergeScatteredMutect2Stats:
 
 
 rule var_som_00a_GetTumorPileupSummaries:
-    input: tumor=expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),gnomad_af=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db'],intervals=config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions'],ref_fasta=STOCK_GENOME_FASTA
+    input: tumor=lambda wildcards: expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group]),gnomad_af=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db'],intervals=config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions'],ref_fasta=STOCK_GENOME_FASTA
     output: "out/{study_group}/variant_calling/{cohort}_tumor.pileup_summaries.table"
     params: n="16", R="'span[hosts=1] rusage[mem=2]'", \
         o="out/logs/get_pileup_summaries.out", eo="out/logs/get_pileup_summaries.err", \
@@ -370,26 +355,27 @@ rule var_som_04_FilterNonPassingSomaticVariants:
     conda: "envs/bcftools.yaml"
     shell: "bcftools view -f PASS {input} > {output}"
 
+
 rule var_som_05_SeparatePassingSomaticVariantsBySample:
     input: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.vcf"
-    output: expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.vcf.gz",sample=TUMOR_SAMPLES)
+    output: "out/{study_group}/variant_calling/{cohort}.{sample}.mutect2.scored.filtered.vcf.gz"
     params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/variant_calling/somatic_separate_bySample.out", eo="out/logs/somatic_separate_bySample.err", \
-        J="somatic_filter+separate"
+        J="somatic_filter+separate", samples=lambda wildcards:SOMATIC_SAMPLE_DICT[wildcards.study_group]
     conda: "envs/gatk4.yaml"
-    shell: "for s in {TUMOR_SAMPLES}; do gatk --java-options -Xmx4g SelectVariants --sample-name $s --variant {input} --output out/{wildcards.study_group}/variant_calling/{COHORT}.mutect2.scored.filtered.$s.vcf.gz; done"
+    shell: "for s in {params.samples}; do gatk --java-options -Xmx4g SelectVariants --sample-name $s --variant {input} --output out/{wildcards.study_group}/variant_calling/{COHORT}.$s.mutect2.scored.filtered.vcf.gz; done"
 
 rule var_som_06_ConsolidateSampleNamesForMerge:
-    input: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.vcf.gz"
+    input: "out/{study_group}/variant_calling/{cohort}.{sample}.mutect2.scored.filtered.vcf.gz"
     output: vcf=temp("out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz"),name_txt=temp("out/{study_group}/variant_calling/{sample}.cohort_name.{cohort}.txt"),idx=temp("out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi")
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
         J="consolidate_names",int_vcf="out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf"
     conda: "envs/bcftools.yaml"
-    shell: "echo '{COHORT}_tumor' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {output.vcf}; tabix -p vcf {output.vcf}"
+    shell: "echo '{COHORT}_{wildcards.study_group}' > {output.name_txt}; bcftools reheader -s {output.name_txt} {input} > {output.vcf}; tabix -p vcf {output.vcf}"
 
 rule var_som_07_CombineSomaticVCFs:
-    input: vcf=expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz",sample=TUMOR_SAMPLES),idx=expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi",sample=TUMOR_SAMPLES)
+    input: vcf=lambda wildcards:expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group]),idx=lambda wildcards: expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group])
     output: "out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf.gz"
     params: n="1", R="'span[hosts=1]'", \
         o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
@@ -424,16 +410,22 @@ rule var_z_MergeFinishedTumorVCFs:
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 
+    """
+    run:
+        in_vcf = os.path.abspath(input.vcf)
+        in_tbi = os.path.abspath(input.tbi)
+        out_vcf = os.path.abspath(output.vcf)
+        out_tbi = os.path.abspath(output.tbi)
+        command = "ln -s {} {}; ln -s {} {}".format(in_vcf, out_vcf, in_tbi, out_tbi)
+        shell(command)
+    """
 rule var_z_FinishNonTumorVCF:
-    input: "out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"
-    output: "out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz"
+    input: ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz","out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf.gz"] if 'somatic' in VARIANT_CALLING_MODES else ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"]
+    #input: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz",tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz.tbi"
+    output: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz"#,tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz.tbi"
     params: n="1", R="'span[hosts=1]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
     wildcard_constraints: study_group='control|experiment|normal'
-    run:
-        in_path = os.path.abspath(input[0])
-        out_path = os.path.abspath(output[0])
-        command = "ln -s {} {}".format(in_path, out_path)
-        shell(command)
-
+    conda: "envs/gatk4.yaml"
+    shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
