@@ -111,7 +111,7 @@ rule wgs_04_MarkDuplicatesAndCoordSort:
 
 rule wgs_05_IndexBam:
     input: "out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup.bam"
-    output: "out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup.bai"
+    output: temp("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup.bai")
     params: n="4", R="'span[hosts=1] rusage[mem=4]'", o="out/logs/index_bam.out", eo="out/logs/index_bam.err", J="index_bam"
     conda: "envs/bwa_picard_samtools.yaml"
     shell: "samtools index {input} {output}"

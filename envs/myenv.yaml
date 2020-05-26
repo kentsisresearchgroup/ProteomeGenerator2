@@ -22,3 +22,4 @@ dependencies:
  - picard=2.18.21
  #- snpeff=4.3.1t
  - snpeff=4.5covid19
+ - arriba=1.2.0

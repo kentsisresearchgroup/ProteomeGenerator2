@@ -174,7 +174,7 @@ with open(vcf_infile,'r') as f:
                 t_seq = ref_dict[t]
                 ref_substr = t_seq[variant_pos_index-min(25,variant_pos_index):variant_pos_index+min(15,len(t_seq)-(variant_pos_index+1))]
                 if sum([1 for x in re.finditer(ref_substr, t_seq)]) >1: 
-                    unsearchable_transcripts.append((t,AA_change_full,position.group(),ref_substr))
+                    unsearchable_transcripts.append((t,AA_change_full,position,ref_substr))
                     
                     continue
                 at_least_1_transcript_without_repeats = True

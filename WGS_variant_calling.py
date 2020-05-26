@@ -383,23 +383,6 @@ rule var_som_07_CombineSomaticVCFs:
     conda: "envs/bcftools.yaml"
     shell: "bcftools concat -a -D {input.vcf} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
 
-"""
-rule var_som_05_ReformatMutectVCF:
-    input: "out/WGS/variant_calling/tumor/{cohort}.mutect2.filtered.vcf"
-    output: "out/WGS/variant_calling/tumor/{cohort}.somatic_finished.vcf"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
-            o="out/logs/reformat_mutect_vcf.out", eo="out/logs/reformat_mutect_vcf.err", \
-            J="reformat_mutect_vcf"
-    run:
-        vcf = open(input[0]).readlines()
-        for line in vcf:
-            if '\t' not in line: open(output[0],'a').write(line)
-            else:
-                tsv = line.split('\t')
-                tsv = tsv[0:len(tsv)-2] + [tsv[len(tsv)-1]]
-                open(output[0],'a').write('\t'.join(tsv))
-"""
-
 rule var_z_MergeFinishedTumorVCFs:
     input: ["out/tumor/variant_calling/{cohort}.somatic_finished.vcf.gz","out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf.gz"]
     output: "out/tumor/variant_calling/{cohort}.tumor.variant_calling_finished.vcf.gz"
@@ -409,16 +392,6 @@ rule var_z_MergeFinishedTumorVCFs:
     conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
-
-    """
-    run:
-        in_vcf = os.path.abspath(input.vcf)
-        in_tbi = os.path.abspath(input.tbi)
-        out_vcf = os.path.abspath(output.vcf)
-        out_tbi = os.path.abspath(output.tbi)
-        command = "ln -s {} {}; ln -s {} {}".format(in_vcf, out_vcf, in_tbi, out_tbi)
-        shell(command)
-    """
 rule var_z_FinishNonTumorVCF:
     input: ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz","out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf.gz"] if 'somatic' in VARIANT_CALLING_MODES else ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"]
     #input: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz",tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz.tbi"
