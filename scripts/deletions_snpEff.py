@@ -2,7 +2,7 @@ import sys, re, difflib
 from Bio import pairwise2
 
 proteome_infile = sys.argv[1]
-annovar_infile = sys.argv[2]
+snpeff_infile = sys.argv[2]
 blast_outfmt6_infile = sys.argv[3]
 ref_fasta_file = sys.argv[4]
 
@@ -15,18 +15,23 @@ MQnovelPep_mutation_map_outfile = sys.argv[8]
 blast_dict=dict()
 enst_uniprot_dict=dict()
 ref_blastHits=set()
+blast_mismatch_rate_dict=dict()
 with open(blast_outfmt6_infile) as blast:
         for hit in blast:
-                mstrg = hit.split('\t')[0][3:-1]
-                ref_header = hit.split('\t')[1]
+                entry = hit.split('\t')
+                mstrg = entry[0][3:-1]
+                ref_header = entry[1]
                 enst = re.search(r'ENST[0-9]+',ref_header).group()
                 enst_uniprot_dict[enst] = ref_header.split('|')[5]
+                mismatch_rate = float(int(entry[4])/int(entry[3]))
+                if mismatch_rate > 0.05: continue
                 if enst in blast_dict:
                         lst = blast_dict[enst]
                         lst.append(mstrg)
                         blast_dict[enst] = lst
                 else:
                         blast_dict[enst] = [mstrg]
+                blast_mismatch_rate_dict[(enst,mstrg)] = mismatch_rate
                 ref_blastHits.add(enst)
 
 ref_dict=dict()
@@ -75,8 +80,6 @@ with open(novelPep_mstrgs_infile) as f:
                                 pep_lst.append(pep)
                                 mstrg_MQnovelPeps_dict[m] = pep_lst
 
-
-
 AA_lookup = dict()
 AA_lookup['A'] = 'Ala'
 AA_lookup['C'] = 'Cys'
@@ -106,149 +109,172 @@ revAA_lookup = {v: k for k, v in AA_lookup.items()}
 total_deletion = 0
 variants_with_expressed_transcripts = 0
 successes=0
+
 true_fails=0
 true_fail_transcripts=[]
 true_fail_set=set()
+
 fails_1_isoform=0
 false_fail_transcripts=[]
+
 unsearchables = 0
 unsearchable_transcripts=[]
 transcripts_missing_AA=set()
-with open(annovar_infile,'r') as f:
+
+with open(snpeff_infile,'r') as f:
     for line in f:
         chrom = line.split('\t')[0]
         successfully_recovered_variant = False
         at_least_1_tr_w_2_isoforms=False
         at_least_1_transcript_without_repeats=False
         variant_has_matched_transcript = False
+
         match = re.search(r'inframe_deletion',line)
         if match is None: continue
         total_deletion = total_deletion+1
+
+        # iterate over all predicted coding transcripts in the SnpEff variant entry
         transcripts = re.findall(r'ENST[0-9]+',line)
         for t in transcripts:
-            
+           
+            # proceed only if coding transcript
+            in_cds = re.search(r'inframe_deletion',line.split(t)[0].split(',')[-1])
+            if not in_cds: continue
+            if t not in ref_dict:
+                print('{}: transcript not in ref protein fasta'.format(t))
+                continue 
             print(t)
-            AA_change_full = re.search(r'p\.([A-Z][a-z]+[0-9]+_)?[A-Z][a-z]+[0-9]+del',line.split(t)[1].split(',')[0])
+
+            # extract amino acid change prediction
+            AA_change_full = re.search(r'p\.([A-Z][a-z][a-z][0-9]+_)?[A-Z][a-z][a-z][0-9]+del',line.split(t)[1].split(',')[0])
             if AA_change_full is None:
                 print("couldn't find AA change: {}".format(t))
                 transcripts_missing_AA.add(t)
                 bailedOut = True
                 continue
             AA_change_full = AA_change_full.group()[2:]
+            print(AA_change_full)
+
+            # extract positional change prediction
             left = ''
             l_AA=''
-            l_pos=''
+            l_pos=-1
+            l_pos_index=-1
             right=''
             r_AA=''
-            r_pos=''
+            r_pos=-1
+            r_pos_index=-1
             print(AA_change_full)
             if '_' in AA_change_full:
                 left = AA_change_full.split('_')[0]
                 print("left: {}".format(left))
                 l_AA = revAA_lookup[left[0:3]]
                 l_pos = int(left[3:])
+                l_pos_index = l_pos - 1
             right = AA_change_full if '_' not in AA_change_full else AA_change_full.split('_')[1]
             r_AA = revAA_lookup[right[0:3]]
 
             r_pos = int(right[3:-3])
+            r_pos_index = r_pos - 1
+            if l_pos_index == -1: l_pos_index = r_pos_index
             
-            #deletion = AA_change_full.split('ins')[1]
-            """
-            position = re.search(r'[0-9]+',AA_change_full)	
-            if position is None:
-                print("couldn't find position: {}".format(t))
-                print(line)
-                bailedOut = True
-                continue
-
-            variant_pos = int(position.group())
-            """
-            if t in blast_dict:
-                repeated_substring=False
-                one_=False
-                two_=False
+            if t in blast_dict: # proceed if the predicted ref transcript is present in the proteome
                 variant_has_matched_transcript = True
-                mstrgs = blast_dict[t]
-                false_blastHits=0
+                mstrgs = blast_dict[t] # find proteome isoforms matching the ref transcript per blast
                 t_seq = ref_dict[t]
                 if left: ref_substr = t_seq[l_pos-min(40,l_pos):r_pos+min(40,len(t_seq)-r_pos)]
                 else: ref_substr = t_seq[r_pos-min(40,r_pos):r_pos+min(40,len(t_seq)-r_pos)]
-                #print(l_pos)
-                #print(l_pos-min(35,l_pos))
-                #print(r_pos+min(30,len(t_seq)-r_pos))
-                #print(ref_substr)
+                
+                one_=False # "failed" variant recoveries, in transcripts for which there are not copies in both haplotype 1 and haplotype 2, will not be counted due to the possibility of the mutant copy being silenced, mutant exon being skipped, etc
+                two_=False
+                false_blastHits=0 # not all "hits" from blast are valid
+                
+                # "failed" variant recoveries, in transcripts  where the reference substring of interest appears more than once, will not be counted due to the possibility of aligning to the wrong instance of the repeated substirng
                 if sum([1 for x in re.finditer(ref_substr, t_seq)]) >1: 
                     unsearchable_transcripts.append((t,AA_change_full,position.group(),ref_substr))
-                    
                     continue
                 at_least_1_transcript_without_repeats = True
+
                 for mstrg in set(mstrgs):
                     if '_{}:'.format(chrom) not in mstrg: continue
-                    if '1_' in mstrg: one_=True
-                    elif '2_' in mstrg: two_=True
-                    #t_seq = ref_dict[t]
-                    #ref_substr = t_seq[variant_pos-min(7,variant_pos):variant_pos+min(6,len(t_seq)-(variant_pos))]
-                    mstrg_MQnovelPeps = [] 
+
                     mstrg_seq = proteome_dict[mstrg]
+                    mstrg_MQnovelPeps = [] 
+
                     alignments=pairwise2.align.localms(ref_substr,mstrg_seq,4,0,-3,-2.5, penalize_end_gaps=(False,True))
-                    #alignments=pairwise2.align.localms(ref_substr,mstrg_seq,4,0.1,-3,-2.5, penalize_end_gaps=(False,True))
 
                     for a in alignments:
                         align_formatted = pairwise2.format_alignment(*a)
                         print(align_formatted)
                         align_formatted_lst = [x for x in align_formatted.split('\n')]
-                        comps = align_formatted_lst[1]
-                        ref_align = align_formatted_lst[0]
-                        alt_align = align_formatted_lst[2]
+                        ref_align = align_formatted_lst[0].split(' ')[-1]
+                        alt_align = align_formatted_lst[2].split(' ')[-1]
+                        comps = align_formatted_lst[1][-1*len(ref_align):]
 
                         if sum([1 for x in comps if x=='|']) < 5*sum([1 for x in comps if x=='.']): 
                             false_blastHits = false_blastHits+1
                             print('false blasthit')
+                            continue
+
+                        ref_align_no_gaps = ref_align.replace('-','')
+                        if t_seq.index(ref_align_no_gaps) > l_pos_index or t_seq.index(ref_align_no_gaps)+len(ref_align) < r_pos_index:
+                            print('alignment does not span mutation position; mutation exon possibly skipped')
+                            continue
+
+                        # legitimate alignment
+
+                        if '1_' in mstrg: one_=True # toggle haplotype flag
+                        elif '2_' in mstrg: two_=True
 
                         deletion_len = 1 if '_' not in AA_change_full else r_pos-l_pos+1
+
                         gaps = '-'*deletion_len
                         if gaps not in alt_align: continue
+
                         del_index = alt_align.index(gaps)
                         if deletion_len == 1: 
-                            if ref_align[del_index] == r_AA: 
-                                successfully_recovered_variant=True
-
-                                if mstrg in mstrg_MQnovelPeps_dict:
-                                    mstrg_pos_start_index = int(alt_align.split(' ')[-2]) - 1
-                                    mstrg_pos_end_index = mstrg_pos_start_index+len(ref_substr)
-                                    mstrg_substr = mstrg_seq[mstrg_pos_start_index-min(30,mstrg_pos_start_index):mstrg_pos_end_index+min(30,len(mstrg_seq)-(mstrg_pos_end_index+1))]
-                                    for pep in mstrg_MQnovelPeps_dict[mstrg]:
-                                        pep_align=pairwise2.align.localms(pep,mstrg_seq,4,0,-3,-2.5, penalize_end_gaps=(False,True))[0]
-                                        deletion_pos = a[3]+del_index
-                                        pep_start_pos = pep_align[3]
-                                        pep_end_pos = pep_align[4]
-                                        if pep in mstrg_substr and pep_start_pos<=deletion_pos and pep_end_pos >=deletion_pos:
-                                            mstrg_MQnovelPeps.append(pep)
-                                            open(MQnovelPep_mutation_map_outfile,'a').write("{}\t{}\t{}\t{}\t{}\t{}\n".format(pep, AA_change_full, t, enst_uniprot_dict[t], mstrg, mstrg_substr))
-
-                                open(mutation_mstrg_map_outfile,'a').write('{}\t{}\t{}\t{}\t{}\n'.format(AA_change_full, t, enst_uniprot_dict[t], mstrg,alt_align))
-                                break
+                            if ref_align[del_index] == r_AA: successfully_recovered_variant=True
                         else:
-                            print('ref_l = {}\tref_r = {}'.format(ref_align[del_index],ref_align[del_index+(r_pos-l_pos)]))
-                            if ref_align[del_index] == l_AA and ref_align[del_index+(r_pos-l_pos)] == r_AA:
-                                successfully_recovered_variant=True
-                                break
+                            if ref_align[del_index] == l_AA and ref_align[del_index+(r_pos-l_pos)] == r_AA: successfully_recovered_variant=True
+
+                        if successfully_recovered_variant:
+
+                            if mstrg in mstrg_MQnovelPeps_dict:
+
+                                mstrg_pos_start_index = int(align_formatted_lst[2].split(' ')[-2]) - 1
+                                mstrg_pos_end_index = mstrg_pos_start_index+len(ref_substr)
+                                mstrg_substr = mstrg_seq[mstrg_pos_start_index-min(30,mstrg_pos_start_index):mstrg_pos_end_index+min(30,len(mstrg_seq)-(mstrg_pos_end_index+1))]
+
+                                # check if novel peptide maps to the sequence substring
+                                for pep in mstrg_MQnovelPeps_dict[mstrg]:
+                                    pep_align=pairwise2.align.localms(pep,mstrg_seq,4,0,-3,-2.5, penalize_end_gaps=(False,True))[0]
+                                    deletion_pos = a[3]+del_index
+                                    pep_start_pos = pep_align[3]
+                                    pep_end_pos = pep_align[4]
+
+                                    if pep in mstrg_substr and pep_start_pos<=deletion_pos and pep_end_pos >=deletion_pos:
+                                        mstrg_MQnovelPeps.append(pep)
+                                        open(MQnovelPep_mutation_map_outfile,'a').write("{}\t{}\t{}\t{}\t{}\t{}\n".format(pep, AA_change_full, t, enst_uniprot_dict[t], mstrg, mstrg_substr))
+
+                            open(mutation_mstrg_map_outfile,'a').write('{}\t{}\t{}\t{}\t{}\n'.format(AA_change_full, t, enst_uniprot_dict[t], mstrg,alt_align))
+                            break
                     if len(mstrg_MQnovelPeps)>0: open(mutation_MQevidence_map_outfile,'a').write("{}\t{}\t{}\t{}\t{}\t{}\n".format(AA_change_full, t, enst_uniprot_dict[t], mstrg, alt_align, mstrg_MQnovelPeps))
 
-                    #if successfully_recovered_variant: break
+                    if successfully_recovered_variant: break # no need to inspect further alignments
 
-
-                if successfully_recovered_variant: break
+                if successfully_recovered_variant: break # no need to inspect further transcripts, variant is confirmed present
                 else: 
-                    if left: print(left)
-                    print(right)
-                    #print(deletion) 
-                    if one_ and two_ and len(set(mstrgs)) - false_blastHits>= 2:
+                    print(AA_change_full)
+                    if not (one_ and two_): # did not have inspectable transcripts in both haplotypes
+                        false_fail_transcripts.append((t,AA_change_full))
+                        continue
+
+                    else:
                         print('hits: {}; false hits: {}'.format(len(set(mstrgs)), false_blastHits))
                         at_least_1_tr_w_2_isoforms=True
                         true_fail_transcripts.append((t,AA_change_full))
                         true_fail_set.add(t)
-                    else: false_fail_transcripts.append((t,AA_change_full))
+
         if variant_has_matched_transcript: variants_with_expressed_transcripts=variants_with_expressed_transcripts+1
         if successfully_recovered_variant: successes=successes+1
         elif variant_has_matched_transcript and not at_least_1_transcript_without_repeats: unsearchables +=1

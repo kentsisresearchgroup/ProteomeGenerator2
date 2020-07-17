@@ -43,7 +43,8 @@ exp_group='tumor' if matched_tumor_normal_data else 'experiment'
 ctrl_group='normal' if matched_tumor_normal_data else 'control'
 
 # The transcriptome, genome annotation, and/or gene fusion tracks are merged at the end to comprise the proteome
-TRACKS=[]
+ALL_TRACKS=[]
+GTF_TRACKS=[]
 if RNA_seq_module_enabled:
     RNAseq_file_format = config['input_files']['RNA-seq_module']['input_file_format']
     BAM_SAMPLES=[]
@@ -81,11 +82,14 @@ if RNA_seq_module_enabled:
             
             replicates = config['input_files']['RNA-seq_module']['fastq_inputs'][s]['read_groups'].keys()
             rep_dict_update = {(s,r): (config['input_files']['RNA-seq_module']['fastq_inputs'][s]['read_groups'][r]['R1_fq.gz'],config['input_files']['RNA-seq_module']['fastq_inputs'][s]['read_groups'][r]['R2_fq.gz']) for r in replicates}
-            SAMPLE_REPLICATE_DICT[s] = replicates
             REPLICATE_FILE_DICT.update(rep_dict_update)
 
-            if config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='experiment': EXPERIMENT_SAMPLES.append(s)
-            elif config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='control': CONTROL_SAMPLES.append(s)
+            if config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='experiment': 
+                EXPERIMENT_SAMPLES.append(s)
+                SAMPLE_REPLICATE_DICT[(s,exp_group)] = replicates
+            elif config['input_files']['RNA-seq_module']['fastq_inputs'][s]['experiment_vs_control']=='control': 
+                CONTROL_SAMPLES.append(s)
+                SAMPLE_REPLICATE_DICT[(s,ctrl_group)] = replicates
         SAMPLE_DICT[('fastq',exp_group)]=list(set(EXPERIMENT_SAMPLES)-set(BAM_SAMPLES))
 	SAMPLE_DICT[('fastq',ctrl_group)]=list(set(CONTROL_SAMPLES)-set(BAM_SAMPLES))
     
@@ -94,14 +98,16 @@ if RNA_seq_module_enabled:
     SAMPLE_DICT[ctrl_group] = CONTROL_SAMPLES
     
     if config['user_defined_workflow']['RNA-seq_module']['transcriptome_track']['assemble_transcriptome_with_StringTie']:
-        TRACKS.append('transcriptome')
+        ALL_TRACKS.append('transcriptome')
+        GTF_TRACKS.append('transcriptome')
     if config['user_defined_workflow']['RNA-seq_module']['gene_fusion_track']['assemble_gene_fusions_with_Arriba']:
-        TRACKS.append('gene_fusions')
+        ALL_TRACKS.append('gene_fusions')
 
-elif config['user_defined_workflow']['genome_annotation_track']['track_enabled']:
+if config['user_defined_workflow']['genome_annotation_track']['track_enabled']:
     separate_tumor_normal_genomes = config['user_defined_workflow']['genome_personalization_module']['create_separate_tumor_normal_genomes']
     STUDY_GROUPS= [exp_group,ctrl_group] if matched_tumor_normal_data and separate_tumor_normal_genomes else [exp_group]
-    TRACKS.append('genome')
+    ALL_TRACKS.append('genome')
+    GTF_TRACKS.append('genome')
     
 
 ### End Workflow Control ###
@@ -141,8 +147,7 @@ snakemake.utils.makedirs('out/logs/proteomics')
 
 # Snakemake terminates when these files are present
 rule all:
-    input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/frameshifts/combined.frameshifts.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/missense/combined.missense.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/insertions/combined.insertions.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/deletions/combined.deletions.map",study_group=STUDY_GROUPS),expand("out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions.tsv",study_group=exp_group,htype=HAPLOTYPES,sample=EXPERIMENT_SAMPLES),expand("out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions.tsv",study_group=ctrl_group,htype=HAPLOTYPES,sample=CONTROL_SAMPLES)
-    #input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/frameshifts/{chr}.frameshifts.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/missense/{chr}.missense.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/insertions/{chr}.insertions.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES),expand("out/{study_group}/novel_analysis/deletions/{chr}.deletions.analysis",study_group=STUDY_GROUPS,chr=CHROMOSOMES)
+    input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/frameshifts/combined.frameshifts.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/missense/combined.missense.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/insertions/combined.insertions.map",study_group=STUDY_GROUPS),expand("out/{study_group}/novel_analysis/deletions/combined.deletions.map",study_group=STUDY_GROUPS), expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS)#,expand("out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions.tsv",study_group=exp_group,htype=HAPLOTYPES,sample=EXPERIMENT_SAMPLES)
 
 # Subworkflows are invoked on rule inputs, and are executed first
 subworkflow create_custom_genome:
@@ -168,6 +173,7 @@ rule RNA_00_STAR_CreateGenomeIndex:
     log: "out/logs/{study_group}/h-{htype}.index.txt"
     conda: "envs/myenv.yaml"
     params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=6]'", J="index", o="out/logs/index.out", eo="out/logs/index.err"
+    #params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=6]'", J="index", o="out/logs/index.out", eo="out/logs/index.err"
     shell: "mkdir -p {params.directory} ; \
             STAR \
             --runThreadN {params.n} \
@@ -175,24 +181,25 @@ rule RNA_00_STAR_CreateGenomeIndex:
             --genomeDir {params.directory} --sjdbGTFfile {input.gtf} --sjdbOverhang {SJ_OVERHANG} --genomeSuffixLengthMax 1000 \
             --genomeFastaFiles {input.fasta} 2> {log}"
 
-rule RNA_00_ExtractFastqReadsFromRNAseqBAM:
-    input: lambda wildcards: config['input_files']['RNA-seq_module']['bam_inputs'][wildcards.sample]['bam_file']
-    output: read_one=temp("out/temp_inputs/{sample}.bam2fq.1.fq.gz"),read_two=temp("out/temp_inputs/{sample}.bam2fq.2.fq.gz")
-    conda: "envs/myenv.yaml"
-    params: n="16", R="'span[hosts=1] rusage[mem=6]'", J="RNAseq_bam2fq", o="out/logs/RNAseq/bam2fq.out", eo="out/logs/RNAseq/bam2fq.err",int_readOne=os.path.join(TMP,"{sample}.RG.bam2fq.1.fq"),int_readTwo=os.path.join(TMP,"{sample}.RG.bam2fq.2.fq")
-    shell: "samtools collate -O -@ {params.n} {input} | samtools fastq -@ {params.n} -1 {params.int_readOne} -2 {params.int_readTwo} -; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
-    
+if 'bam' in RNAseq_file_format:
+    rule RNA_00_ExtractFastqReadsFromRNAseqBAM:
+        input: lambda wildcards: config['input_files']['RNA-seq_module']['bam_inputs'][wildcards.sample]['bam_file']
+        output: read_one=temp("out/temp_inputs/{sample}.bam2fq.1.fq.gz"),read_two=temp("out/temp_inputs/{sample}.bam2fq.2.fq.gz")
+        conda: "envs/myenv.yaml"
+        params: n="16", R="'span[hosts=1] rusage[mem=6]'", J="RNAseq_bam2fq", o="out/logs/RNAseq/bam2fq.out", eo="out/logs/RNAseq/bam2fq.err",int_readOne=os.path.join(TMP,"{sample}.RG.bam2fq.1.fq"),int_readTwo=os.path.join(TMP,"{sample}.RG.bam2fq.2.fq")
+        shell: "samtools collate -O -@ {params.n} {input} | samtools fastq -@ {params.n} -1 {params.int_readOne} -2 {params.int_readTwo} -; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
+   
 if RNA_seq_module_enabled:
     import uuid
     rule RNA_01_STAR_AlignRNAReadsByRG:
         input: PG2_STAR_INDEX, \
-               r1 = lambda wildcards: [config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][replicate]['R1_fq.gz'] for replicate in SAMPLE_REPLICATE_DICT[wildcards.sample]] if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.1.fq.gz", \
-               r2 = lambda wildcards: [config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][replicate]['R2_fq.gz'] for replicate in SAMPLE_REPLICATE_DICT[wildcards.sample]] if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.2.fq.gz", \
+               r1 = lambda wildcards: [config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][replicate]['R1_fq.gz'] for replicate in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]] if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.1.fq.gz", \
+               r2 = lambda wildcards: [config['input_files']['RNA-seq_module']['fastq_inputs'][wildcards.sample]['read_groups'][replicate]['R2_fq.gz'] for replicate in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]] if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.2.fq.gz", \
                gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
-        output: temp("out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.sortedByCoord.out.bam")
+        output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.sortedByCoord.out.bam"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=6]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.err", \
-                r1_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][0] for rep in SAMPLE_REPLICATE_DICT[wildcards.sample]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.1.fq.gz", r2_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][1] for rep in SAMPLE_REPLICATE_DICT[wildcards.sample]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.2.fq.gz", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=12]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.err", \
+                r1_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][0] for rep in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.1.fq.gz", r2_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][1] for rep in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.2.fq.gz", \
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}'.format(wildcards.sample,uuid.uuid4()))
         shell: "STAR \
             --genomeDir {params.directory} \
@@ -235,10 +242,10 @@ max_allowed_multimaps = config['parameters']['RNA-seq_module']['read_filtering']
 bamflag_filters = config['parameters']['RNA-seq_module']['read_filtering']['advanced']['filter_out_bamFlags']
 rule RNA_02_FilterLowQualityReads:
     input: bam="out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.sortedByCoord.out.bam"
-    output: temp("out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.out.bam")
+    output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.out.bam"
     conda: "envs/myenv.yaml"
-    params: n="1", R="'rusage[mem=4]'", J="filter", o="out/logs/filter.out", eo="out/logs/filter.err", min_mapq=(255 if max_allowed_multimaps==1 else int(-10*math.log(1-(1/max_allowed_multimaps),10))), flags=bamflag_filters 
-    shell: "samtools view -b -h \
+    params: n="8", R="'span[hosts=1] rusage[mem=2]'", J="filter", o="out/logs/filter.out", eo="out/logs/filter.err", min_mapq=(255 if max_allowed_multimaps==1 else int(-10*math.log(1-(1/max_allowed_multimaps),10))), flags=bamflag_filters 
+    shell: "samtools view -b -h -@ {params.n}\
                 $(echo {params.flags} | sed -r 's/[^ ]+/-F &/g') \
                 -q {params.min_mapq} \
                 {input.bam} > {output}"
@@ -302,17 +309,19 @@ if RNA_seq_module_enabled:
                     {input.sample_transcriptome} 2> {log}"
 
 #TODO: function to create subsets of the genome GTF.
-if 'genome' in TRACKS:
+if 'genome' in ALL_TRACKS:
     rule GTF_CreateGenomeAnnotationTrack:
         input: gtf=os.path.abspath((create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF))
         output: "out/{study_group}/haplotype-{htype}/genome/genome.gtf"
         params: n="8", R="'span[hosts=1]'", J="merge", o="out/logs/merge.out", eo="out/logs/merge.err"
         shell: "ln -s {input} {output}"
 
+
 ### Gene fusions ###
+snakemake.utils.makedirs('out/logs/fusions')
 
 rule arriba:
-    input: bam="out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.trimmed.out.bam", fa=PG2_GENOME_FASTA, gtf=PG2_GENOME_GTF
+    input: bam="out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.sortedByCoord.out.bam", fa=(create_custom_genome(PG2_GENOME_FASTA) if creating_custom_genome else PG2_GENOME_FASTA),gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
     output: fusions="out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions.tsv",discarded="out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions_discarded.tsv"
     params: n="8", R="'span[hosts=1] rusage[mem=8]'", J="arriba_fusions", o="out/logs/fusions/arriba.out", eo="out/logs/arriba/fusions.err", \
             chroms=CHROMOSOMES
@@ -334,7 +343,7 @@ rule FormatFusionOrfDB:
         with open(input.orfs) as oldDB, open(output.fasta,'w') as newDB:
             for line in oldDB:
                 if '>' in line: newDB.write('>{}'.format(line.split(' ')[-1]))
-                else: newDB.write('{}'.format('\n'.join(textwrap.wrap(line.replace('*','', 80)))))
+                else: newDB.write('{}\n'.format('\n'.join(textwrap.wrap(line.replace('*','', 80)))))
 
 
 ### Proteome Generation Workflow ###
@@ -342,16 +351,18 @@ rule FormatFusionOrfDB:
 # Read out nucleotide sequences from GTFs
 rule main_01_ExtractCdnaSequences:
     input: gtf="out/{study_group}/haplotype-{htype}/{track}/{track}.gtf", ref_fasta=(create_custom_genome(PG2_GENOME_FASTA) if creating_custom_genome else PG2_GENOME_FASTA)
-    output: fasta = "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta",
-        gtf="out/{study_group}/haplotype-{htype}/{track}/transcripts.gtf"
-    log: "out/logs/{study_group}/h-{htype}.{track}.gtf_file_to_cDNA_seqs.txt"
+    output: fasta = "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta", gtf="out/{study_group}/haplotype-{htype}/{track}/transcripts.gtf"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="gtf_file_to_cDNA_seqs", o="out/logs/gtf_file_to_cDNA_seqs.out", eo="out/logs/gtf_file_to_cDNA_seqs.err"
     shell: "gffread {input.gtf} -T -o {output.gtf} \
-        --no-pseudo \
         --force-exons \
         -M -Q; \
-        gffread -w {output.fasta} -g {input.ref_fasta} {output.gtf} 2> {log}"
+        gffread -w {output.fasta} -g {input.ref_fasta} {output.gtf}"
+    #shell: "gffread {input.gtf} -T -o {output.gtf} \
+    #    --no-pseudo \
+    #    --force-exons \
+    #    -M -Q; \
+    #    gffread -w {output.fasta} -g {input.ref_fasta} {output.gtf}"
 
 rule main_01a_GTFtoAlignmentGFF3:
     input: "out/{study_group}/haplotype-{htype}/{track}/transcripts.gtf"
@@ -477,12 +488,11 @@ rule remove_duplicate_proteome_entries:
     script: "{PG2_HOME}/scripts/reorderFASTA.R"
 
 rule main_06_MergeAllProteomeTracksAndRemoveDups:
-    input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.fasta", htype=HAPLOTYPES, track=TRACKS)
+    input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.fasta", htype=HAPLOTYPES, track=ALL_TRACKS)
     output: "out/{study_group}/combined.proteome.unique.fasta"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     shell: "python3 {PG2_HOME}/scripts/reorderFASTA_select_BLAST+ENST.py {output} {input}"
-    #script:"{PG2_HOME}/scripts/reorderFASTA.R"
 
 rule combine_assembly_tracks:
     input: expand("out/{{study_group}}/haplotype-{htype}/RNAseq/proteome.fasta", htype=HAPLOTYPES)
@@ -524,7 +534,7 @@ else:
         shell: "mv {input} {output}"
 
 rule merge_lifted_bedFiles:
-    input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.bed",htype=HAPLOTYPES,track=TRACKS)
+    input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.bed",htype=HAPLOTYPES,track=GTF_TRACKS)
     output: "out/{study_group}/combined.proteome.bed"
     conda: "envs/myenv.yaml"
     params: n="1", R="'rusage[mem=4]'", J="merge_proteome_bed", o="out/logs/merge_proteome_bed.out", eo="out/logs/merge_proteome_bed.err"
@@ -555,14 +565,8 @@ if CONTROL_RAW_DIR:
 MQ_THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
 
 rule copyRawFiles:
-    #input: raw= lambda wildcards:RAW_FILE_DICT[wildcards.study_group]
     input: raw= lambda wildcards: os.path.join(RAW_DIR_DICT[wildcards.study_group],wildcards.raw_file)
-    #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
-    #input: raw=[os.path.join(CONTROL_RAW_DIR, '{raw_file}'), os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')] if CONTROL_RAW_DIR else [os.path.join(EXPERIMENT_RAW_DIR, '{raw_file}')]
-    #input: raw=os.path.join(RAW_DIR,'{raw_file}'),fasta='out/{study_group}/combined.proteome.unique.fasta'
-    #output: expand("out/{{study_group}}/MaxQuant/{raw_file}.raw",raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]])
     output: "out/{study_group}/MaxQuant/rawfiles/{raw_file}"
-    #output: "out/{study_group}/MaxQuant/{raw_file}.raw"
     params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="copy_raw", o="out/logs/copy_raw.out", eo="out/logs/copy_raw.err", file_dir=directory("out/{study_group}/MaxQuant/rawfiles")
     shell: "ln -s {input.raw} {params.file_dir}"
 
@@ -675,7 +679,7 @@ rule maxQuant:
     input: lambda wildcards: expand("out/{study_group}/MaxQuant/rawfiles/{raw_file}",study_group=wildcards.study_group, raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
     output: "out/{study_group}/MaxQuant/combined/txt/summary.txt","out/{study_group}/MaxQuant/combined/txt/peptides.txt","out/{study_group}/MaxQuant/combined/txt/proteinGroups.txt"
     singularity: "docker://mono:5.12.0.226"
-    params: n=lambda wildcards: str(max(16,len(RAW_FILE_DICT[wildcards.study_group]))), J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(MQ_THREADS), o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
+    params: n=lambda wildcards: str(max(16,min(36,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", R="'span[hosts=1] rusage[mem=8]'".format(MQ_THREADS), o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
     shell: "mono {MQ} {input.par}"
 
 

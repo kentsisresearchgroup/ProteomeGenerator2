@@ -12,8 +12,6 @@ subworkflow WGS_variant_calling:
 
 snakemake.utils.makedirs('out/logs/novel_analysis')
 [snakemake.utils.makedirs('out/{}/novel_analysis/{}'.format(study_group,mutation_type)) for study_group in STUDY_GROUPS for mutation_type in MUTATION_TYPES]
-#rule all:
-#    input: expand("out/{{study_group}}/novel_analysis/frameshifts/{chr}.frameshifts.analysis",chr=CHROMOSOMES),expand("out/{{study_group}}/novel_analysis/missense/{chr}.missense.analysis",chr=CHROMOSOMES),expand("out/{{study_group}}/novel_analysis/insertions/{chr}.insertions.analysis",chr=CHROMOSOMES),expand("out/{{study_group}}/novel_analysis/deletions/{chr}.deletions.analysis",chr=CHROMOSOMES)
 
 rule IdentifyNovelPeptides:
     input: mq_peps="out/{study_group}/MaxQuant/combined/txt/peptides.txt", ref_db=STOCK_PROTEOME_FASTA
@@ -57,41 +55,20 @@ rule SubsetAnnotatedVariantsByChr:
     params: n="1", R="'rusage[mem=4]'", J="subset_annotatedVCF", o="out/logs/novel_analysis/{study_group}.subset_snpeff.out", eo="out/logs/novel_analysis/{study_group}.subset_snpeff.err"
     conda: "envs/bcftools.yaml"
     shell: "bcftools view {input.snpEff} {wildcards.chr} > {output}"
-
-rule MapMissenses:
+rule MapMutations:
     input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
-    output: analysis='out/{study_group}/novel_analysis/missense/{chr}.missense.analysis'
-    params: n="1", R="'rusage[mem=4]'", J="missense", o="out/logs/novel_analysis/{study_group}.map_missense.out", eo="out/logs/novel_analysis/{study_group}.map_missense.err", \
-            mutation_mstrg_map='out/{study_group}/novel_analysis/missense/{chr}.missense.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/missense/{chr}.missense_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/missense/{chr}.novelPep_missense.map"
-    shell: "python3 {PG2_HOME}/scripts/align_missenses_snpeff.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} {input.novelpep_transcript_map} {params.mutation_mstrg_map} {params.mutation_MQevidence_map} {params.novelpep_mutation_map} > {output.analysis}"
+    output: analysis='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis'
+    params: n="1", R="'rusage[mem=4]'", J="map_{mutation_type}", o="out/logs/novel_analysis/{study_group}.{mutation_type}.out", eo="out/logs/novel_analysis/{study_group}.{mutation_type}.err", \
+            mutation_mstrg_map='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/{mutation_type}/{chr}.novelPep_{mutation_type}.map"
+    shell: "python3 {PG2_HOME}/scripts/{wildcards.mutation_type}_snpEff.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} {input.novelpep_transcript_map} {params.mutation_mstrg_map} {params.mutation_MQevidence_map} {params.novelpep_mutation_map} > {output.analysis}"
 
-rule MapInsertions:
-    input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
-    output: analysis='out/{study_group}/novel_analysis/insertions/{chr}.insertions.analysis'
-    params: n="1", R="'rusage[mem=4]'", J="insertions", o="out/logs/novel_analysis/{study_group}.map_insertions.out", eo="out/logs/novel_analysis/{study_group}.map_insertions.err", \
-            mutation_mstrg_map='out/{study_group}/novel_analysis/insertions/{chr}.insertions.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/insertions/{chr}.insertions_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/insertions/{chr}.novelPep_insertions.map"
-    shell: "python3 {PG2_HOME}/scripts/insertions_snpEff.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} {input.novelpep_transcript_map} {params.mutation_mstrg_map} {params.mutation_MQevidence_map} {params.novelpep_mutation_map} > {output.analysis}"
-
-rule MapDeletions:
-    input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
-    output: analysis='out/{study_group}/novel_analysis/deletions/{chr}.deletions.analysis'
-    params: n="1", R="'rusage[mem=4]'", J="deletions", o="out/logs/novel_analysis/{study_group}.map_deletions.out", eo="out/logs/novel_analysis/{study_group}.map_deletions.err", \
-            mutation_mstrg_map='out/{study_group}/novel_analysis/deletions/{chr}.deletions.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/deletions/{chr}.deletions_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/deletions/{chr}.novelPep_deletions.map"
-    shell: "python3 {PG2_HOME}/scripts/deletions_snpEff.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} {input.novelpep_transcript_map} {params.mutation_mstrg_map} {params.mutation_MQevidence_map} {params.novelpep_mutation_map} > {output.analysis}"
-
-rule MapFrameshifts:
-    input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
-    output: analysis='out/{study_group}/novel_analysis/frameshifts/{chr}.frameshifts.analysis'
-    params: n="1", R="'rusage[mem=4]'", J="frameshifts", o="out/logs/novel_analysis/{study_group}.map_frameshifts.out", eo="out/logs/novel_analysis/{study_group}.map_frameshifts.err", \
-            mutation_mstrg_map='out/{study_group}/novel_analysis/frameshifts/{chr}.frameshifts.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/frameshifts/{chr}.frameshifts_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/frameshifts/{chr}.novelPep_frameshifts.map"
-    shell: "python3 {PG2_HOME}/scripts/frameshifts_snpEff.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} {input.novelpep_transcript_map} {params.mutation_mstrg_map} {params.mutation_MQevidence_map} {params.novelpep_mutation_map} > {output.analysis}"
 
 rule AggregateMutations:
     input: expand("out/{{study_group}}/novel_analysis/{{mutation_type}}/{chr}.{{mutation_type}}.analysis", chr=CHROMOSOMES)
-    output: mutation_mstrg="out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",mutation_MQevdience="out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}_MQevidence.map",novelPep_mutation="out/{study_group}/novel_analysis/{mutation_type}/combined.novelPep_{mutation_type}.map"
+    output: mutation_mstrg="out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",mutation_MQevidence="out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}_MQevidence.map",novelPep_mutation="out/{study_group}/novel_analysis/{mutation_type}/combined.novelPep_{mutation_type}.map"
     params: n="1", R="'rusage[mem=4]'", J="aggregate_{mutation_type}", o="out/logs/novel_analysis/{study_group}.aggregate_{mutation_type}.out", eo="out/logs/novel_analysis/{study_group}.aggregate_{mutation_type}.err", \
-            mutation_mstrg=lambda wildcards:expand('out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.map',chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if '.{}.map'.format(wildcards.mutation_type) in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type), \
-            mutation_MQevidence=lambda wildcards: expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}_MQevidence.map",chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if 'MQevidence' in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type), \
-            novelpep_mutation=lambda wildcards: expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.novelPep_{mutation_type}.map",chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if 'novelPep' in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type)
+            mutation_mstrg=lambda wildcards:expand('out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.map',chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if '.{}.map'.format(wildcards.mutation_type) in f and 'combined' not in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type), \
+            mutation_MQevidence=lambda wildcards: expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}_MQevidence.map",chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if 'MQevidence' in f and 'combined' not in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type), \
+            novelpep_mutation=lambda wildcards: expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.novelPep_{mutation_type}.map",chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if 'novelPep' in f and 'combined' not in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type)
     shell: "python3 {PG2_HOME}/scripts/aggregate_mutations.py {params.mutation_mstrg} {params.mutation_MQevidence} {params.novelpep_mutation}"
 

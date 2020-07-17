@@ -13,7 +13,7 @@ with open(out_fasta,'w') as out:
 			event=entry[8]
 			confidence=entry[16]
 			cDNA=entry[20]
-			#print(cDNA)
+			if '|' not in cDNA: continue # omit transcripts where the cDNA is not given
 			breakpoint_pos=cDNA.index('|')
 			out.write('>fusion.[{}]-[{}].{}.{}.{}\n'.format(five_prime,three_prime,event,confidence,breakpoint_pos))
 			cDNA_sanitized=cDNA.replace('|','').replace('_','').replace('.','')

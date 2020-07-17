@@ -11,7 +11,7 @@ STOCK_GENOME_GTF=config['stock_references']['genome']['gtf']
 COHORT=config['input_files']['genome_personalization_module']['cohort_or_organism_name']
 
 input_file_format = config['input_files']['genome_personalization_module']['input_file_format']
-if input_file_format == 'vcf':
+if 'vcf' in input_file_format:
     INPUT_VCFS = config['input_files']['genome_personalization_module']['vcf_inputs'].keys()
     INPUT_VCF_GZ_FILES = []
     ALL_INPUT_VCF_SAMPLES = []
@@ -32,16 +32,24 @@ calling_variants = config['user_defined_workflow']['genome_personalization_modul
 #calling_variants = False if input_file_format == 'vcf' else True # True if input is 'fastq' or 'bam'
 just_called_variants = config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['continuation']['just_finished_variant_calling']
 
-if not (calling_variants or just_called_variants): assert input_file_format == 'vcf'
+if not (calling_variants or just_called_variants): assert 'vcf' in input_file_format, "in order to run genome personalization, you must either call variants on WGS/WES input data, or supply a called VCF."
 if calling_variants:
     TUMOR_SAMPLES=[]
     #NORMAL_SAMPLES=[]
+    
+    sample_dict_list = [dict(config['input_files']['genome_personalization_module'][fmt+'_inputs']) for fmt in input_file_format]
+    for d in sample_dict_list:
+        for sample_name in d.keys():
+            if d[sample_name]['matched_sample_params']['is_matched_sample'] == False or d[sample_name]['matched_sample_params']['tumor_or_normal']=='tumor': TUMOR_SAMPLES.append(sample_name)
+
+    """
     sample_dict = dict(config['input_files']['genome_personalization_module'][input_file_format+'_inputs'])
     for sample_name in sample_dict.keys():
         if sample_dict[sample_name]['matched_sample_params']['is_matched_sample'] == False or sample_dict[sample_name]['matched_sample_params']['tumor_or_normal']=='tumor': TUMOR_SAMPLES.append(sample_name)
         #elif sample_dict[sample_name]['matched_sample_params']['tumor_or_normal']=='normal':
         #    NORMAL_SAMPLES.append(sample_name)
         #else: assert False, "This should never happen!"
+    """
 
 try:
     fa_index_file = open('{}.fai'.format(STOCK_GENOME_FASTA))

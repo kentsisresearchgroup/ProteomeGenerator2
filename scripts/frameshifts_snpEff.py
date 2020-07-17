@@ -15,19 +15,24 @@ MQnovelPep_mutation_map_outfile = sys.argv[8]
 blast_dict=dict()
 enst_uniprot_dict=dict()
 ref_blastHits=set()
+blast_mismatch_rate_dict=dict()
 with open(blast_outfmt6_infile) as blast:
-	for hit in blast:
-		mstrg = hit.split('\t')[0][3:-1]
-		ref_header = hit.split('\t')[1]
-		enst = re.search(r'ENST[0-9]+',ref_header).group()
-		enst_uniprot_dict[enst] = ref_header.split('|')[5]
-		if enst in blast_dict: 
-			lst = blast_dict[enst]
-			lst.append(mstrg)
-			blast_dict[enst] = lst
-		else:
-			blast_dict[enst] = [mstrg]
-		ref_blastHits.add(enst)
+        for hit in blast:
+                entry = hit.split('\t')
+                mstrg = entry[0][3:-1]
+                ref_header = entry[1]
+                enst = re.search(r'ENST[0-9]+',ref_header).group()
+                enst_uniprot_dict[enst] = ref_header.split('|')[5]
+                mismatch_rate = float(int(entry[4])/int(entry[3]))
+                if mismatch_rate > 0.05: continue
+                if enst in blast_dict:
+                        lst = blast_dict[enst]
+                        lst.append(mstrg)
+                        blast_dict[enst] = lst
+                else:
+                        blast_dict[enst] = [mstrg]
+                blast_mismatch_rate_dict[(enst,mstrg)] = mismatch_rate
+
 
 ref_dict=dict()
 seq=''
@@ -75,8 +80,6 @@ with open(novelPep_mstrgs_infile) as f:
 				pep_lst.append(pep)
 				mstrg_MQnovelPeps_dict[m] = pep_lst
 
-import difflib
-
 AA_lookup = dict()
 AA_lookup['A'] = 'Ala'
 AA_lookup['C'] = 'Cys'
@@ -117,14 +120,18 @@ with open(vcf_infile,'r') as f:
 total_frameshift = 0
 variants_with_expressed_transcripts = 0
 successes=0
+
 true_fails=0
 true_fail_transcripts=[]
 true_fail_set=set()
+
 fails_1_isoform=0
 false_fail_transcripts=[]
+
 unsearchables = 0
 unsearchable_transcripts=[]
 transcripts_missing_AA=set()
+
 with open(vcf_infile,'r') as f:
     for line in f:
         chrom = line.split('\t')[0]
@@ -132,16 +139,25 @@ with open(vcf_infile,'r') as f:
         at_least_1_tr_w_2_isoforms=False
         at_least_1_transcript_without_repeats=False
         variant_has_matched_transcript = False
+
         match = re.search(r'frameshift',line)
         if match is None: continue
         total_frameshift = total_frameshift+1
+
+        # iterate over all predicted coding transcripts in the SnpEff variant entry
         transcripts = re.findall(r'ENST[0-9]+',line)
         for t in transcripts:
             
-            coding = re.search(r'protein_coding',line)
-            if not coding: continue
+            # proceed only if coding transcript
+            in_cds = re.search(r'frameshift',line.split(t)[0].split(',')[-1])
+            if not in_cds: continue
+            if t not in ref_dict:
+                print('{}: transcript not in ref protein fasta'.format(t))
+                continue
             print(t)
-            AA_change_full = re.search(r'p\.[A-Z][a-z]+[0-9]+fs',line.split(t)[1].split(',')[0])
+
+            # extract amino acid change prediction
+            AA_change_full = re.search(r'p\.[A-Z][a-z][a-z][0-9]+fs',line.split(t)[1].split(',')[0])
             if AA_change_full is None:
                 print("couldn't find AA change: {}".format(t))
                 transcripts_missing_AA.add(t)
@@ -149,12 +165,10 @@ with open(vcf_infile,'r') as f:
                 continue
             AA_change_full = AA_change_full.group()
             print(AA_change_full)
-            #print(AA_change_full)
-            AA_new = revAA_lookup[re.findall(r'[A-Z][a-z][a-z]',AA_change_full)[0]]
-            #AA_new = re.findall(r'[A-Z][a-z][a-z]',AA_change_full)[1]
-            aa_new = AA_new
-            #aa_new = AA_new
 
+            aa_new = revAA_lookup[re.findall(r'[A-Z][a-z][a-z]',AA_change_full)[0]]
+
+            # extract positional change prediction
             position = int(re.findall(r'[0-9]+',AA_change_full)[0])
             if position is None:
                 print("couldn't find position: {}".format(t))
@@ -162,30 +176,30 @@ with open(vcf_infile,'r') as f:
                 bailedOut = True
                 continue
             variant_pos_index = position-1
-            #new_stop = int(re.findall(r'[0-9]+',AA_change_full)[1])
 
-            if t in blast_dict:
-                repeated_substring=False
-                one_=False
-                two_=False
+            if t in blast_dict: # proceed if the predicted ref transcript is present in the proteome
                 variant_has_matched_transcript = True
-                mstrgs = blast_dict[t]
-                false_blastHits=0
+                mstrgs = blast_dict[t] # find proteome isoforms matching the ref transcript per blast
+
                 t_seq = ref_dict[t]
                 ref_substr = t_seq[variant_pos_index-min(25,variant_pos_index):variant_pos_index+min(15,len(t_seq)-(variant_pos_index+1))]
+
+                one_=False # "failed" variant recoveries, in transcripts for which there are not copies in both haplotype 1 and haplotype 2, will not be counted due to the possibility of the mutant copy being silenced, mutant exon being skipped, etc
+                two_=False
+                false_blastHits=0 # not all "hits" from blast are valid
+                
+                # "failed" variant recoveries, in transcripts  where the reference substring of interest appears more than once, will not be counted due to the possibility of aligning to the wrong instance of the repeated substirng
                 if sum([1 for x in re.finditer(ref_substr, t_seq)]) >1: 
                     unsearchable_transcripts.append((t,AA_change_full,position,ref_substr))
-                    
                     continue
                 at_least_1_transcript_without_repeats = True
+
                 for mstrg in set(mstrgs):
                     if '_{}:'.format(chrom) not in mstrg: continue
-                    if '1_' in mstrg: one_=True
-                    elif '2_' in mstrg: two_=True
-                    #t_seq = ref_dict[t]
-                    #ref_substr = t_seq[variant_pos_index-min(7,variant_pos_index):variant_pos_index+min(6,len(t_seq)-(variant_pos_index))]
-                    mstrg_MQnovelPeps = []    
+
                     mstrg_seq = proteome_dict[mstrg]
+                    mstrg_MQnovelPeps = []    
+
                     alignments=pairwise2.align.localms(ref_substr,mstrg_seq,4,0,-3,-2.5, penalize_end_gaps=(False,True))
 
                     for a in alignments:
@@ -200,6 +214,8 @@ with open(vcf_infile,'r') as f:
                         """if sum([1 for x in comps if x=='|']) < 3*(sum([1 for x in comps if x=='.'])+sum([1 for x in comps if x==' '])): 
                             false_blastHits = false_blastHits+1
                             print('false blasthit') """
+                        if '1_' in mstrg: one_=True
+                        elif '2_' in mstrg: two_=True
                         for i in mismatch_indices:
                             print('{}\t{}\t{}'.format(i,ref_align[i],alt_align[i]))
                             pre_i_matches = sum([1 for x in comps[0:i] if x == '|'])
