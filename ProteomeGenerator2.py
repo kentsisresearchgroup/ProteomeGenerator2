@@ -219,7 +219,7 @@ if RNA_seq_module_enabled:
                gtf=(create_custom_genome(PG2_GENOME_GTF) if creating_custom_genome else PG2_GENOME_GTF)
         output: "out/{study_group}/haplotype-{htype}/RNAseq/alignment/{sample}.Aligned.sortedByCoord.out.bam"
         conda: "envs/myenv.yaml"
-        params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=12]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.err", \
+        params: directory=os.path.dirname(PG2_STAR_INDEX), n="16", R="'span[hosts=1] rusage[mem=12]'", J="STAR_align", o="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.out", eo="out/logs/RNAseq/{study_group}.haplotype-{htype}.{sample}.STAR.err", mem_per_cpu="12", \
                 r1_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][0] for rep in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.1.fq.gz", r2_formatted=lambda wildcards:','.join([REPLICATE_FILE_DICT[(wildcards.sample,rep)][1] for rep in SAMPLE_REPLICATE_DICT[(wildcards.sample,wildcards.study_group)]]) if wildcards.sample in SAMPLE_DICT[('fastq',wildcards.study_group)] else "out/temp_inputs/{sample}.bam2fq.2.fq.gz", \
                 tmp_dir=lambda wildcards: os.path.join(TMP,'{}.{}'.format(wildcards.sample,uuid.uuid4()))
         shell: "STAR \
@@ -438,19 +438,20 @@ rule main_02b_ORF_BLASTpForHomologyScore:
         -outfmt 6 \
         -evalue 1e-5 \
         > {output} 2> {log}"
-
+retaining_single_best_only = config['parameters']['protein_prediction_main']['advanced']['single_best_ORF_only']
 rule main_03_ORF_PredictCodingRegions:
     input: orfs="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir/longest_orfs.pep",
         fasta="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta",
         blastp="out/{study_group}/haplotype-{htype}/{track}/blastp.outfmt6"
     output: "out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.pep",checkpoint_dir=directory("out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir.__checkpoints/"),gff3="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder.gff3"
     conda: "envs/myenv.yaml"
-    params: n="1", R="'rusage[mem=18]'", J="Predict", o="out/logs/Predict.out", eo="out/logs/Predict.err"
+    params: n="1", R="'rusage[mem=18]'", J="Predict", o="out/logs/Predict.out", eo="out/logs/Predict.err",single_best_only='--single_best_only' if retaining_single_best_only else ''
     shell: "rm -r {output.checkpoint_dir};cd out/{wildcards.study_group}/haplotype-{wildcards.htype}/{wildcards.track}; {PG2_HOME}/utils/transdecoder/TransDecoder.Predict.PG2 \
         -t transcripts.fasta \
         --retain_long_orfs_length {nuc_ORF} \
         -v \
         --retain_blastp_hits blastp.outfmt6 \
+        {params.single_best_only} \
         --max_overlap_pct 100"
 
 rule main_04_GenerateCDSinGenomeCoords:
@@ -558,9 +559,10 @@ MQ_THREADS=str(len(RAW_FILES)) if len(RAW_FILES) >= 16 else '16'
 
 rule copyRawFiles:
     input: raw= lambda wildcards: os.path.join(RAW_DIR_DICT[wildcards.study_group],wildcards.raw_file)
-    output: "out/{study_group}/MaxQuant/rawfiles/{raw_file}"
+    output: temp("out/{study_group}/MaxQuant/rawfiles/{raw_file}")
     params: n="1", R="'span[hosts=1] rusage[mem=10]'", J="copy_raw", o="out/logs/copy_raw.out", eo="out/logs/copy_raw.err", file_dir=directory("out/{study_group}/MaxQuant/rawfiles")
-    shell: "ln -s {input.raw} {params.file_dir}"
+    shell: "cp {input.raw} {params.file_dir}"
+    #shell: "ln -s {input.raw} {params.file_dir}"
 
 rule mqpar_conversion:
     input: fasta="out/{study_group}/combined.proteome.unique.fasta",par=PAR
@@ -587,7 +589,8 @@ rule mqpar_conversion:
                     newMQPar.write("<numThreads>"+ MQ_THREADS +"</numThreads>\n")
                 if '<filePaths>' in line:
                     for k in range(len(RAW_FILES)):
-                        newMQPar.write("<string>" + RAW_FILES[k] + "</string>\n")
+                        #newMQPar.write("<string>" + RAW_FILES[k] + "</string>\n")
+                        newMQPar.write("<string>{}/rawfiles/{}</string>\n".format(os.path.dirname(os.path.abspath(output[0])),os.path.basename(RAW_FILES[k])))
                 if '<experiments>' in line:
                     for k in range(len(RAW_FILES)):
                         newMQPar.write("<string></string>\n")
@@ -670,8 +673,9 @@ rule maxQuant:
     #input: par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
     input: lambda wildcards: expand("out/{study_group}/MaxQuant/rawfiles/{raw_file}",study_group=wildcards.study_group, raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
     output: "out/{study_group}/MaxQuant/combined/txt/summary.txt","out/{study_group}/MaxQuant/combined/txt/peptides.txt","out/{study_group}/MaxQuant/combined/txt/proteinGroups.txt"
-    singularity: "docker://mono:5.12.0.226"
-    params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", R="'span[hosts=1] rusage[mem=12]'".format(MQ_THREADS), o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
+    singularity: "docker://mono:6.8.0.123"
+    params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", R="'span[hosts=1] rusage[mem=12]'", o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
+    #params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", R="'span[hosts=1] rusage[mem=12]'".format(MQ_THREADS), o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
     shell: "mono {MQ} {input.par}"
 
 
