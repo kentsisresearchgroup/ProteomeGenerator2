@@ -97,25 +97,25 @@ The (suggested) snakemake command to run PG2 takes the following general form:
 
 It looks really complicated at first, but keep in mind that most of it doesn’t change from run to run, so you can pretty much copy & paste it for each run, with minor modifications. A brief rundown of the parameters:
 
-### Sanity checks recommended before every pipeline run:
-`-n` = dry run. Lists out every pipeline rule that will be executed with the given command. Without --quiet, includes specification of inputs, outputs, and “wildcard” parameters. Extremely useful sanity check, highly recommend running this before every run.
-`--quiet` = reduces the verbosity of the run/dry-run terminal output to print only the names of the rules being run, without input/output/wildcards. Suggested to include in dry-run command before kicking off a full pipeline run (as command list can be quite unwieldy with subworkflows etc.), but would remove prior to the actual run.
+*Sanity checks recommended before every pipeline run:*
+- `-n` = dry run. Lists out every pipeline rule that will be executed with the given command. Without --quiet, includes specification of inputs, outputs, and “wildcard” parameters. Extremely useful sanity check, highly recommend running this before every run.
+- `--quiet` = reduces the verbosity of the run/dry-run terminal output to print only the names of the rules being run, without input/output/wildcards. Suggested to include in dry-run command before kicking off a full pipeline run (as command list can be quite unwieldy with subworkflows etc.), but would remove prior to the actual run.
 
-### Parameters that user will change regularly:
-`--configfile <configfile.yaml>` = where the workflow is defined, and all directories/files/parameters are set
-`<output_file>` = the ‘target’, or final output of the pipeline desired by the user
-`--snakefile <snakefile.py>` = the main snakemake (Python) program to execute (for PG2, this is ProteomeGenerator2.py)  this will vary only if the user wants to run the various submodules (pre-processing, variant calling, etc) independently of the main program
+*Parameters that user will change regularly:*
+- `--configfile <configfile.yaml>` = where the workflow is defined, and all directories/files/parameters are set
+- `<output_file>` = the ‘target’, or final output of the pipeline desired by the user
+- `--snakefile <snakefile.py>` = the main snakemake (Python) program to execute (for PG2, this is ProteomeGenerator2.py)  this will vary only if the user wants to run the various submodules (pre-processing, variant calling, etc) independently of the main program
 
-### Parameters the user will likely have to change once before first execution:
-`--cluster “<cluster_specific_string>”` = parameters for compute cluster execution (the Lilac cluster uses the LSF scheduler, which deploys jobs via the command bsub). {params.<parameter>} binds the corresponding parameters of the params section of each Snakemake rule, to the cluster command. This will need to be edited for use with SLURM, Oracle Grid Engine, etc.
+*Parameters the user will likely have to change once before first execution:*
+- `--cluster “<cluster_specific_string>”` = parameters for compute cluster execution (the Lilac cluster uses the LSF scheduler, which deploys jobs via the command bsub). {params.<parameter>} binds the corresponding parameters of the params section of each Snakemake rule, to the cluster command. This will need to be edited for use with SLURM, Oracle Grid Engine, etc.
 [here, J=jobname, n=cores, R=host/memory spec, W=wall time, o=output log, eo=error log]
-`--singularity-args “--bind <filesystem_bindings>”` = grants Singularity containers permission to access other directories within the local filesystem
+- `--singularity-args “--bind <filesystem_bindings>”` = grants Singularity containers permission to access other directories within the local filesystem
 
-### Parameters the user will likely (and probably should) never change: 
-`--use-conda` = allows use of packages and environments from Anaconda
-`--use-singularity` = allows use of plug-n-play containers (PG2 uses Singularity specifically for MaxQuant, which requires particular versions of mono to run on Linux)
-`-k` = when a job fails, continue executing independent jobs
-`--ri` = rerun incomplete jobs automatically
+*Parameters the user will likely (and probably should) never change:* 
+- `--use-conda` = allows use of packages and environments from Anaconda
+- `--use-singularity` = allows use of plug-n-play containers (PG2 uses Singularity specifically for MaxQuant, which requires particular versions of mono to run on Linux)
+- `-k` = when a job fails, continue executing independent jobs
+- `--ri` = rerun incomplete jobs automatically
 
 For the full parameter specifications, please see the Snakemake official documentation at https://snakemake.readthedocs.io/en/stable/. 
 
