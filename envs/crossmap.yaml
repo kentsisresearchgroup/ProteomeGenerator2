@@ -1,8 +1,5 @@
 name: crossmap
 channels:
   - bioconda
-  - r
-  - defaults
-  - conda-forge
 dependencies:
   - crossmap=0.3.9

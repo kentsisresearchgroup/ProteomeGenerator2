@@ -23,15 +23,6 @@ for d in sample_dict_list:
             NORMAL_SAMPLES.append(sample_name)
             NONMATCHED_SAMPLES.append(sample_name)
 
-print(NORMAL_SAMPLES)
-"""
-sample_dict = dict(config['input_files']['genome_personalization_module'][input_file_format+'_inputs'])
-for sample_name in sample_dict.keys():
-    if sample_dict[sample_name]['matched_sample_params']['is_matched_sample'] and sample_dict[sample_name]['matched_sample_params']['tumor_or_normal']=='tumor': TUMOR_SAMPLES.append(sample_name)
-    else: 
-        NORMAL_SAMPLES.append(sample_name)
-        NONMATCHED_SAMPLES.append(sample_name)
-"""
 
 ALL_SAMPLES=TUMOR_SAMPLES + NORMAL_SAMPLES
 
@@ -70,7 +61,7 @@ NUM_VARIANT_INTERVALS = config['parameters']['genome_personalization_module']['v
 rule var_00_ScatterVariantCallingIntervals:
     input: config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions']
     output: "out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/variant_calling/intervals/{interval}.out", eo="out/logs/variant_calling/intervals/{interval}.err", \
             J="generate_intervals_{interval}"
     conda: "envs/gatk4.yaml"
@@ -81,7 +72,7 @@ if (not just_ran_WGS_preprocessing) and running_preprocessing:
     rule var_00_TumorSymlinkToPreProcessingOutputBam:
         input: bam=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=TUMOR_SAMPLES)),bai=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=TUMOR_SAMPLES))
         output: bam="out/tumor/variant_calling/{sample}.analysis_ready.bam",bai="out/tumor/variant_calling/{sample}.analysis_ready.bam.bai"
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
             in_bam_path = os.path.abspath(str(input.bam))
             in_bai_path = os.path.abspath(str(input.bai))
@@ -90,7 +81,7 @@ if (not just_ran_WGS_preprocessing) and running_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
         input: bam=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=NORMAL_SAMPLES)),bai=WGS_preprocessing(expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=NORMAL_SAMPLES))
         output: bam=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment']),bai=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam.bai",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment'])
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
             in_bam_path = os.path.abspath(str(input.bam))
             in_bai_path = os.path.abspath(str(input.bai))
@@ -100,7 +91,7 @@ elif just_ran_WGS_preprocessing:
     rule var_00_TumorSymlinkToPreProcessingOutputBam:
         input: bam=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=TUMOR_SAMPLES),bai=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=TUMOR_SAMPLES)
         output: bam="out/tumor/variant_calling/{sample}.analysis_ready.bam",bai="out/tumor/variant_calling/{sample}.analysis_ready.bam.bai"
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run: 
             in_bam_path = os.path.abspath(str(input.bam))
             in_bai_path = os.path.abspath(str(input.bai))
@@ -109,7 +100,7 @@ elif just_ran_WGS_preprocessing:
     rule var_00_SymlinkToPreProcessingOutputBam:
         input: bam=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",sample=NORMAL_SAMPLES),bai=expand("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai",sample=NORMAL_SAMPLES)
         output: bam=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment']),bai=expand("out/{study_group}/variant_calling/{{sample}}.analysis_ready.bam.bai",study_group=['normal'] if config['user_defined_workflow']['genome_personalization_module']['data_is_matched_tumor_normal'] else ['experiment'])
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         run:
             in_bam_path = os.path.abspath(str(input.bam))
             in_bai_path = os.path.abspath(str(input.bai))
@@ -125,13 +116,13 @@ else:
     rule var_00_SymlinkToUserPreprocessedBam:
         input: bam=lambda wildcards: os.path.abspath(config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file']),bai=lambda wildcards: os.path.abspath(config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bai_file'])
         output: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",bai="out/{study_group}/variant_calling/{sample}.analysis_ready.bai"
-        params: n="1",R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1]'",o="out/logs/variant_calling/symlink.out",eo="out/logs/variant_calling/symlink.err",J="symlink"
         shell: "ln -s {input.bam} {output.bam}; ln -s {input.bai} {output.bai}"
 
 rule var_germ_01_CallGermlineVariantsPerInterval:
     input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam", interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
     output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.g.vcf")
-    params: n="4", R="'span[hosts=1] rusage[mem=3]'", \
+    params: n="4", mem_per_cpu="3", R="'span[hosts=1] rusage[mem=3]'", \
         o="out/logs/variant_calling/intervals/vcf_{interval}.out", eo="out/logs/variant_calling/intervals/vcf_{interval}.err", \
         J="generate_vcf_{interval}"
     conda: "envs/gatk4.yaml"
@@ -140,7 +131,7 @@ rule var_germ_01_CallGermlineVariantsPerInterval:
 rule var_germ_02_GenotypeTumorSamplePerInterval:
     input: gvcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.g.vcf", interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
     output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf"
-    params: n="2", R="'span[hosts=1] rusage[mem=32]'", \
+    params: n="2", mem_per_cpu="32", R="'span[hosts=1] rusage[mem=32]'", \
         o="out/logs/variant_calling/intervals/genotype_gvcfs_{interval}.out", eo="out/logs/variant_calling/intervals/genotype_gvcfs_{interval}.err", \
         J="genotype_gvcfs"
     conda: "envs/gatk4.yaml"
@@ -150,7 +141,7 @@ rule var_germ_02_GenotypeTumorSamplePerInterval:
 rule var_germ_TMP_HardFilterVariants:
     input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
     output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.hardfiltered.vcf.gz"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.out", eo="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.err", \
         J="hardfilter_variants_{interval}"
     conda: "envs/gatk4.yaml"
@@ -159,7 +150,7 @@ rule var_germ_TMP_HardFilterVariants:
 rule var_germ_TMP_MergeHardFilteredIntervalWiseVCFs:
     input: expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.hardfiltered.vcf.gz",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{sample}.hardfiltered.vcf"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
     conda: "envs/gatk4.yaml"
@@ -168,7 +159,7 @@ rule var_germ_TMP_MergeHardFilteredIntervalWiseVCFs:
 rule var_germ_TMP_merge_genotyped:
     input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf=expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.genotyped.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.vcf"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_genotyped.out", eo="out/logs/merge_genotyped.err", \
         J="merge_genotyped"
     conda: "envs/gatk4.yaml"
@@ -185,7 +176,7 @@ rule var_germ_TMP_CNN2D_ScoreVariants:
 rule var_germ_03_CNN2D_ScoreVariants:
     input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
     output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/variant_calling/intervals/score_variants_{interval}.out", eo="out/logs/variant_calling/intervals/score_variants_{interval}.err", \
         J="score_variants_{interval}"
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
@@ -198,7 +189,7 @@ INDEL_TRANCHE=config['parameters']['genome_personalization_module']['variant_cal
 rule var_germ_04_AssignVariantTranches:
     input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
     output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz")
-    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
         J="assign_tranches"
     singularity: "docker://broadinstitute/gatk:4.1.4.1"
@@ -207,7 +198,7 @@ rule var_germ_04_AssignVariantTranches:
 rule var_germ_05_FilterNonpassingGermlineVariants:
     input: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz"
     output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.filtered.vcf")
-    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/filter_germline.out", eo="out/logs/filter_germline.err", \
         J="filter_germline"
     conda: "envs/bcftools.yaml"
@@ -216,7 +207,7 @@ rule var_germ_05_FilterNonpassingGermlineVariants:
 rule var_germ_06_MergeIntervalWiseVCFs:
     input: expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.CNN-scored.tranched.filtered.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{sample}.germline_finished.vcf"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
     conda: "envs/gatk4.yaml"
@@ -225,7 +216,7 @@ rule var_germ_06_MergeIntervalWiseVCFs:
 rule var_germ_06b_ConsolidateSampleNamesForMerge:
     input: "out/{study_group}/variant_calling/{sample}.germline_finished.vcf"
     output: temp("out/{study_group}/variant_calling/{sample}.germline_finished.name_consolidated.vcf.gz"),name_txt=temp("out/{study_group}/variant_calling/{sample}.cohort_name.txt")
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
         J="consolidate_names",int_vcf="out/{study_group}/variant_calling/{sample}.germline_finished.name_consolidated.vcf"
     conda: "envs/bcftools.yaml"
@@ -234,7 +225,7 @@ rule var_germ_06b_ConsolidateSampleNamesForMerge:
 rule var_germ_07t_CombineTumorSampleGermlineVCFs:
     input: expand("out/tumor/variant_calling/{sample}.germline_finished.name_consolidated.vcf.gz",sample=TUMOR_SAMPLES)
     output: "out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf.gz"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
         J="merge_tumor_vcfs", int_vcf="out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf"
     conda: "envs/bcftools.yaml"
@@ -245,7 +236,7 @@ rule var_germ_07n_CombineSampleGermlineVCFs:
     input: expand("out/{{study_group}}/variant_calling/{sample}.germline_finished.name_consolidated.vcf.gz",sample=NORMAL_SAMPLES)
     output: "out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz","out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz.tbi"
     wildcard_constraints: study_group='control|experiment|normal'
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_normal_vcfs.out", eo="out/logs/merge_normal_vcfs.err", \
         J="merge_normal_vcfs", int_vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf"
     conda: "envs/bcftools.yaml"
@@ -257,7 +248,7 @@ rule var_germ_07n_CombineSampleGermlineVCFs:
 rule CreatePindelConfigFile:
     input: ANALYSIS_READY_BAMFILES
     output: "out/{study_group}/variant_calling/pindel/pindel_config_file.txt"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/create_pindel_configfile.out", eo="out/logs/create_pindel_configfile.err", \
         J="pindel_config"
     run: 
@@ -274,7 +265,7 @@ CHROMOSOMES = [x.split('\t')[0] for x in fa_index_file.readlines()]
 rule CallLongIndelsAndSVsWithPindel:
     input: config="out/{study_group}/variant_calling/pindel/pindel_config_file.txt", ref_fasta=STOCK_GENOME_FASTA
     output: "out/{study_group}/variant_calling/pindel/scattered/{cohort}.{chr}.pindel"
-    params: n="4", R="'span[hosts=1] rusage[mem=16]'", \
+    params: n="4", mem_per_cpu="16", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/variant_calling/chr-wise/pindel_{chr}.out", eo="out/logs/variant_calling/chr-wise/pindel_{chr}.err", \
         J="pindel"
     conda: "envs/pindel.yaml"
@@ -283,7 +274,7 @@ rule CallLongIndelsAndSVsWithPindel:
 rule Pindel2Vcf:
     input: pindel="out/{study_group}/variant_calling/pindel/scattered/{cohort}.{chr}.pindel_TD", ref_fasta=STOCK_GENOME_FASTA
     output: "out/{study_group}/variant_calling/pindel/scattered/{cohort}.{chr}.pindel_TD.vcf"
-    params: n="4", R="'span[hosts=1] rusage[mem=16]'", \
+    params: n="4", mem_per_cpu="16", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/variant_calling/chr-wise/pindel2vcf_{chr}.out", eo="out/logs/variant_calling/chr-wise/pindel2vcf_{chr}.err", \
         J="pindel2vcf"
     conda: "envs/pindel.yaml"
@@ -302,7 +293,7 @@ if config['user_defined_workflow']['genome_personalization_module']['data_is_mat
     rule var_som_01_Mutect2_matched_tumor_normal:
         input: tumor=expand("out/tumor/variant_calling/{sample}.analysis_ready.bam",sample=TUMOR_SAMPLES),normal=expand("out/normal/variant_calling/{sample}.analysis_ready.bam",sample=NORMAL_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
         output: vcf=temp("out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf"),stats=temp("out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats")
-        params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
+        params: n="4", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_matched"
         conda: "envs/gatk4.1.5.0.yaml"
@@ -317,7 +308,7 @@ elif 'somatic' in VARIANT_CALLING_MODES:
     rule var_som_01_Mutect2_without_matched_normal:
         input: sample=expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=NONMATCHED_SAMPLES),ref=STOCK_GENOME_FASTA,interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list",gnomad_af=GNOMAD_AF
         output: vcf="out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf",stats="out/{study_group}/variant_calling/Mutect2-scattered/{cohort}.mutect2.{interval}.vcf.stats"
-        params: n="4", R="'span[hosts=1] rusage[mem=4]'", \
+        params: n="4", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
             o="out/logs/variant_calling/intervals/mutect2_{interval}.out", eo="out/logs/variant_calling/intervals/mutect2_{interval}.err", \
             J="mutect2_unmatched"
         conda: "envs/gatk4.1.5.0.yaml"
@@ -328,7 +319,7 @@ elif 'somatic' in VARIANT_CALLING_MODES:
 rule var_som_02_MergeScatteredMutect2VCFs:
     input: vcf=expand("out/{{study_group}}/variant_calling/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{cohort}.mutect2.vcf"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_somatic.out", eo="out/logs/merge_somatic.err", \
             J="merge_somatic"
     conda: "envs/gatk4.yaml"
@@ -339,7 +330,7 @@ rule var_som_02_MergeScatteredMutect2VCFs:
 rule var_som_02a_MergeScatteredMutect2Stats:
     input: stats=expand("out/{{study_group}}/variant_calling/Mutect2-scattered/{{cohort}}.mutect2.{interval}.vcf.stats",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{cohort}.mutect2.vcf.stats"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_mutect_stats.out", eo="out/logs/merge_mutect_stats.err", \
             J="merge_mutect_stats"
     conda: "envs/gatk4.yaml"
@@ -350,7 +341,7 @@ rule var_som_02a_MergeScatteredMutect2Stats:
 rule var_som_00a_GetTumorPileupSummaries:
     input: tumor=lambda wildcards: expand("out/{{study_group}}/variant_calling/{sample}.analysis_ready.bam",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group]),gnomad_af=config['parameters']['genome_personalization_module']['variant_calling']['resources']['somatic']['germline_population_db'],intervals=config['parameters']['genome_personalization_module']['variant_calling']['resources']['wgs_calling_regions'],ref_fasta=STOCK_GENOME_FASTA
     output: "out/{study_group}/variant_calling/{cohort}_tumor.pileup_summaries.table"
-    params: n="16", R="'span[hosts=1] rusage[mem=2]'", \
+    params: n="16", mem_per_cpu="2", R="'span[hosts=1] rusage[mem=2]'", \
         o="out/logs/get_pileup_summaries.out", eo="out/logs/get_pileup_summaries.err", \
         J="get_pileup_summaries"
     conda: "envs/gatk4.yaml"
@@ -361,7 +352,7 @@ rule var_som_00a_GetTumorPileupSummaries:
 rule var_som_00b_CalculateContamination:
     input: "out/{study_group}/variant_calling/{cohort}_tumor.pileup_summaries.table"
     output: "out/{study_group}/variant_calling/{cohort}_tumor.contamination.table"
-    params: n="4", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="4", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
         o="out/logs/calculate_contamination.out", eo="out/logs/calculate_contamination.err", \
         J="calculate_contamination"
     conda: "envs/gatk4.yaml"
@@ -370,7 +361,7 @@ rule var_som_00b_CalculateContamination:
 rule var_som_03_ScoreVariantsWithFilterMutectCalls:
     input: vcf="out/{study_group}/variant_calling/{cohort}.mutect2.vcf",contam_table="out/{study_group}/variant_calling/{cohort}_tumor.contamination.table",stats="out/{study_group}/variant_calling/{cohort}.mutect2.vcf.stats",ref=STOCK_GENOME_FASTA
     output: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.vcf.gz"
-    params: n="1", R="'span[hosts=1] rusage[mem=16]'", \
+    params: n="1", mem_per_cpu="16", R="'span[hosts=1] rusage[mem=16]'", \
         o="out/logs/filter_mutect2.out", eo="out/logs/filter_mutect2.err", \
         J="filter_mutect2"
     conda: "envs/gatk4.yaml"
@@ -379,7 +370,7 @@ rule var_som_03_ScoreVariantsWithFilterMutectCalls:
 rule var_som_04_FilterNonPassingSomaticVariants:
     input: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.vcf.gz"
     output: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.vcf"
-    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/filter_somatic.out", eo="out/logs/filter_somatic.err", \
         J="filter_somatic"
     conda: "envs/bcftools.yaml"
@@ -389,7 +380,7 @@ rule var_som_04_FilterNonPassingSomaticVariants:
 rule var_som_05_SeparatePassingSomaticVariantsBySample:
     input: "out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.vcf"
     output: "out/{study_group}/variant_calling/{cohort}.{sample}.mutect2.scored.filtered.vcf.gz"
-    params: n="1", R="'span[hosts=1] rusage[mem=4]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
         o="out/logs/variant_calling/somatic_separate_bySample.out", eo="out/logs/variant_calling/somatic_separate_bySample.err", \
         J="somatic_filter+separate", samples=lambda wildcards:SOMATIC_SAMPLE_DICT[wildcards.study_group]
     conda: "envs/gatk4.yaml"
@@ -398,7 +389,7 @@ rule var_som_05_SeparatePassingSomaticVariantsBySample:
 rule var_som_06_ConsolidateSampleNamesForMerge:
     input: "out/{study_group}/variant_calling/{cohort}.{sample}.mutect2.scored.filtered.vcf.gz"
     output: vcf=temp("out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz"),name_txt=temp("out/{study_group}/variant_calling/{sample}.cohort_name.{cohort}.txt"),idx=temp("out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi")
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/consolidate_names.out", eo="out/logs/consolidate_names.err", \
         J="consolidate_names",int_vcf="out/{study_group}/variant_calling/{cohort}.mutect2.scored.filtered.{sample}.name_consolidated.vcf"
     conda: "envs/bcftools.yaml"
@@ -407,7 +398,7 @@ rule var_som_06_ConsolidateSampleNamesForMerge:
 rule var_som_07_CombineSomaticVCFs:
     input: vcf=lambda wildcards:expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group]),idx=lambda wildcards: expand("out/{{study_group}}/variant_calling/{{cohort}}.mutect2.scored.filtered.{sample}.name_consolidated.vcf.gz.tbi",sample=SOMATIC_SAMPLE_DICT[wildcards.study_group])
     output: "out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf.gz"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
         J="merge_tumor_vcfs", int_vcf="out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf"
     wildcard_constraints: study_group='control|experiment'
@@ -417,7 +408,7 @@ rule var_som_07_CombineSomaticVCFs:
 rule var_z_MergeFinishedTumorVCFs:
     input: ["out/tumor/variant_calling/{cohort}.somatic_finished.vcf.gz","out/tumor/variant_calling/{cohort}.tumor.germline_finished.vcf.gz"]
     output: "out/tumor/variant_calling/{cohort}.tumor.variant_calling_finished.vcf.gz"
-    params: n="1", R="'span[hosts=1] rusage[mem=8]'", \
+    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
     conda: "envs/gatk4.yaml"
@@ -427,7 +418,7 @@ rule var_z_FinishNonTumorVCF:
     input: ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz","out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf.gz"] if 'somatic' in VARIANT_CALLING_MODES and TUMOR_SAMPLES==[] else ["out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz"]
     #input: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz",tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.germline_finished.vcf.gz.tbi"
     output: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz"#,tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz.tbi"
-    params: n="1", R="'span[hosts=1]'", \
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
             o="out/logs/merge_finished_vcfs.out", eo="out/logs/merge_finished_vcfs.err", \
             J="merge_finished_vcfs"
     wildcard_constraints: study_group='control|experiment|normal'

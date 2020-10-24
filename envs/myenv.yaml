@@ -1,18 +1,16 @@
 channels:
- - r
  - bioconda
  - biobuilds 
- #- kbchoi
+ - R 
+#- kbchoi
 dependencies:
- - r=3.3.1
+ - r
+ #- r=3.3.1
  - bioconductor-biostrings=2.42.1
  - star=2.7.3a
- - stringtie=1.3.4
  - transdecoder=5.5.0
- #- gffread=0.11.4
  - gffread=0.9.12
  - blast=2.2.31
- #- g2gtools=0.2.7
  - ucsc-liftover=377
  - samtools=1.9
  - dfam
@@ -21,3 +19,4 @@ dependencies:
  #- snpeff=4.3.1t
  - snpeff=4.5covid19
  - arriba=1.2.0
+ - biopython

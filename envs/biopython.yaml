@@ -1,0 +1,7 @@
+name: biopython
+channels:
+  - bioconda
+  - defaults
+dependencies:
+  - biopython=1.74
+  #- python=3.6.0
