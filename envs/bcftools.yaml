@@ -1,9 +1,9 @@
 name: bcftools
 channels:
   - bioconda
-#  - r
-#  - defaults
-#  - conda-forge
+  - r
+  - defaults
+  - conda-forge
 dependencies:
   - bcftools=1.10.2
   - samtools=1.10
