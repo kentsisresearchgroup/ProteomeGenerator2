@@ -4,8 +4,8 @@ channels:
  - R 
 #- kbchoi
 dependencies:
- - r
- #- r=3.3.1
+ #- r
+ - r=3.3.1
  - bioconductor-biostrings=2.42.1
  - star=2.7.3a
  - transdecoder=5.5.0
