@@ -1,0 +1,5 @@
+name: R
+channels:
+  - R
+dependencies:
+  - r=3.3.1

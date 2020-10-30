@@ -4,8 +4,8 @@ channels:
  - R 
 #- kbchoi
 dependencies:
- #- r
- - r=3.3.1
+ - r
+ #- r=3.3.1
  - bioconductor-biostrings=2.42.1
  - star=2.7.3a
  - transdecoder=5.5.0
@@ -19,4 +19,4 @@ dependencies:
  #- snpeff=4.3.1t
  - snpeff=4.5covid19
  - arriba=1.2.0
- - biopython
+ #- biopython

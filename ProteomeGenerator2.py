@@ -506,13 +506,16 @@ rule main_05_ReadOutProteomeFASTA:
     params: n="2", mem_per_cpu="8", R="'rusage[mem=8]'", J="gff3_file_to_proteins", o="out/logs/gff3_file_to_proteins.out", eo="out/logs/gff3_file_to_proteins.err"
     shell: "cat {input.gff3} | grep -P \"\tCDS\t\" | gffread --force-exons - -o- | gff3_file_to_proteins.pl --gff3 /dev/stdin --fasta {input.ref_fasta} | egrep -o '^[^*]+' > {output} 2> {log}"
 
+"""
 rule remove_duplicate_proteome_entries:
     input: "out/{study_group}/haplotype-{htype}/{track}/proteome.fasta"
     output: "out/{study_group}/haplotype-{htype}/{track}/proteome.unique.fasta"
     log: "out/logs/{study_group}/h-{htype}.{track}.reorderFASTA.txt"
-    conda: "envs/myenv.yaml"
+    #conda: "envs/myenv.yaml"
+    conda: "envs/R.yaml"
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="reorderFASTA", o="out/logs/reorderFASTA.out", eo="out/logs/reorderFASTA.err", wd=WD
     script: "{PG2_HOME}/scripts/reorderFASTA.R"
+"""
 
 rule main_06_MergeAllProteomeTracksAndRemoveDups:
     input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.fasta", htype=HAPLOTYPES, track=ALL_TRACKS)
@@ -521,13 +524,15 @@ rule main_06_MergeAllProteomeTracksAndRemoveDups:
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     shell: "python3 {PG2_HOME}/scripts/reorderFASTA_select_BLAST+ENST.py {output} {input}"
 
+"""
 rule combine_assembly_tracks:
     input: expand("out/{{study_group}}/haplotype-{htype}/RNAseq/proteome.fasta", htype=HAPLOTYPES)
     output: "out/{study_group}/combined.assembly.proteome.unique.fasta"
-    conda: "envs/myenv.yaml"
+    #conda: "envs/myenv.yaml"
+    conda: "envs/R.yaml"
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     script:"{PG2_HOME}/scripts/reorderFASTA.R"
-
+"""
 
 ### BEDfile Generation (for IGV) Workflow ###
 
