@@ -1,0 +1,7 @@
+channels:
+ - bioconda
+
+dependencies:
+ - star=2.7.3a
+ - samtools=1.9
+ - picard=2.18.21
