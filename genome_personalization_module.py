@@ -79,7 +79,7 @@ else:
     rule genome_00_MergeAllInputVCFs:
         input: vcfs=INPUT_VCF_GZ_FILES
         output: merged_vcf="out/WGS/{cohort}.input_vcfs_merged.vcf.gz"
-        conda: "envs/myenv.yaml"
+        #conda: "envs/myenv.yaml"
         params: n="1", mem_per_cpu="6", R="'rusage[mem=6]'", J="merge_input_vcfs", o="out/logs/merge_input_vcfs.out", eo="out/logs/merge_input_vcfs.err"
         conda: "envs/bcftools.yaml"
         shell: "picard MergeVcfs -Xmx6g \
