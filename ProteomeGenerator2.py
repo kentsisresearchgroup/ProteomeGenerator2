@@ -451,7 +451,7 @@ rule main_02a_ORF_MakeBlastDB:
     input: fasta=STOCK_PROTEOME_FASTA
     output: [PGM_DBNAME+'.pin', PGM_DBNAME+'.phr', PGM_DBNAME+'.psq']
     log: "out/logs/makeblastdb.txt"
-    conda: "envs/transdecoder.yaml"
+    conda: "envs/blast.yaml"
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="makeblastdb", o="out/logs/makeblastdb.out", eo="out/logs/makeblastdb.err"
     shell: "makeblastdb \
         -in {input.fasta} \
@@ -462,7 +462,7 @@ rule main_02b_ORF_BLASTpForHomologyScore:
     input: [PGM_DBNAME+'.pin', PGM_DBNAME+'.phr', PGM_DBNAME+'.psq'], pep="out/{study_group}/haplotype-{htype}/{track}/transcripts.fasta.transdecoder_dir/longest_orfs.pep"
     output: "out/{study_group}/haplotype-{htype}/{track}/blastp.outfmt6"
     log: "out/logs/{study_group}/h-{htype}.{track}.blastp.txt"
-    conda: "envs/transdecoder.yaml"
+    conda: "envs/blast.yaml"
     params: n="18", mem_per_cpu="4", R="'span[ptile=18] rusage[mem=4]'", J="blastp", o="out/logs/blastp.out", eo="out/logs/blastp.err"
     shell: "blastp \
         -num_threads {params.n} \
@@ -555,7 +555,7 @@ if creating_custom_genome or continuing_after_genome_personalization:
     rule liftOver_bed_coords:
         input: bed="out/{study_group}/haplotype-{htype}/{track}/proteome_preLiftBack.bed", chain="out/custom_ref/"+COHORT+".{study_group}_H{htype}.chain.reverse"
         output: "out/{study_group}/haplotype-{htype}/{track}/proteome.bed"
-        conda: "envs/transdecoder.yaml"
+        conda: "envs/liftover.yaml"
         params: n="1", mem_per_cpu="8", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.err", tmp_bed="out/{study_group}/haplotype-{htype}/{track}/proteome_temp.bed"
         shell: "cat {input.bed} | cut -c 3- > {params.tmp_bed}; liftOver {params.tmp_bed} {input.chain} {output} {output}.unmapped; rm {params.tmp_bed}"
 else:

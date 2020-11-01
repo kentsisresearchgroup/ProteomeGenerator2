@@ -4,5 +4,3 @@ channels:
 dependencies:
  - transdecoder=5.5.0
  - gffread=0.9.12
- - blast=2.2.31
- - ucsc-liftover=377
