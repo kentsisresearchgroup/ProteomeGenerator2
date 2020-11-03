@@ -29,7 +29,7 @@ rule BlastProteome:
     input: proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta", ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
     output: "out/{study_group}/novel_analysis/proteome_blast.outfmt6"
     params: n="24", mem_per_cpu="3", R="'span[hosts=1] rusage[mem=3]'", J="blast_proteome", o="out/logs/blast_proteome.out", eo="out/logs/blast_proteome.err"
-    conda: "envs/myenv.yaml"
+    conda: "envs/blast.yaml"
     shell: "blastp -num_threads {params.n} -query {input.proteome} -db {input.ref_db} -outfmt 6 -max_target_seqs 5 -evalue 1e-40 > {output}"
 
 #SNPEFF_DB=os.path.splitext(os.path.basename(STOCK_GENOME_GTF))[0]
@@ -38,7 +38,7 @@ rule CreateSnpEffDatabase:
     input: ref_gtf=STOCK_GENOME_GTF, genome_fa=STOCK_GENOME_FASTA, protein_fa="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa", snpEff_config=os.path.join(PG2_HOME,'utils/snpEff.config')
     output: genome_fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/sequences.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB),gtf=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/genes.gtf",pg2_home=PG2_HOME,db_name=SNPEFF_DB),protein_fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/protein.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB)
     params: n="8", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", J="snpeff_db", o="out/logs/snpeff_db.out", eo="out/logs/snpeff_db.err", db_name=SNPEFF_DB
-    conda: "envs/myenv.yaml"
+    conda: "envs/biopython.yaml"
     shell: "ln -s /data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa {PG2_HOME}/utils/snpEff_dbs/{params.db_name}/protein.fa; ln -s {input.ref_gtf} {output.gtf}; ln -s {input.genome_fa} {output.genome_fa}; cat <( echo '{params.db_name}.genome : Human') {input.snpEff_config} > {input.snpEff_config}.new; mv {input.snpEff_config}.new {input.snpEff_config}; snpEff -Xmx32g build -c {input.snpEff_config} -gtf22 -v {params.db_name}"
 
 rule AnnotatePredictedVariantEffects:
@@ -46,7 +46,7 @@ rule AnnotatePredictedVariantEffects:
     output: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.snpEff.vcf.gz",tbi="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.snpEff.vcf.gz.tbi"
     params: n="16", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", J="snpEff", o="out/logs/annotate_variants.out", eo="out/logs/annotate_variants.err", \
             db_name=SNPEFF_DB, int_vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.snpEff.vcf"
-    conda: "envs/myenv.yaml"
+    conda: "envs/biopython.yaml"
     shell: "snpEff -Xmx64g -c {input.snpEff_config} {params.db_name} {input.vcf} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {output.vcf}"
 
 rule SubsetAnnotatedVariantsByChr:

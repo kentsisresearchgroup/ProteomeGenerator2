@@ -2,6 +2,8 @@ name: biopython
 channels:
   - bioconda
   - defaults
+  - conda-forge
 dependencies:
   - biopython=1.74
-  #- python=3.6.0
+  - snpeff=4.5covid19
+  - pytabix

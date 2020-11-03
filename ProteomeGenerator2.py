@@ -520,7 +520,6 @@ rule remove_duplicate_proteome_entries:
 rule main_06_MergeAllProteomeTracksAndRemoveDups:
     input: expand("out/{{study_group}}/haplotype-{htype}/{track}/proteome.fasta", htype=HAPLOTYPES, track=ALL_TRACKS)
     output: "out/{study_group}/combined.proteome.unique.fasta"
-    #conda: "envs/myenv.yaml"
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="combine_fastas", o="out/logs/combine_fastas.out", eo="out/logs/combine_fastas.err", wd=WD
     shell: "python3 {PG2_HOME}/scripts/reorderFASTA_select_BLAST+ENST.py {output} {input}"
 
@@ -555,9 +554,10 @@ if creating_custom_genome or continuing_after_genome_personalization:
     rule liftOver_bed_coords:
         input: bed="out/{study_group}/haplotype-{htype}/{track}/proteome_preLiftBack.bed", chain="out/custom_ref/"+COHORT+".{study_group}_H{htype}.chain.reverse"
         output: "out/{study_group}/haplotype-{htype}/{track}/proteome.bed"
-        conda: "envs/liftover.yaml"
+        #conda: "envs/liftover.yaml"
         params: n="1", mem_per_cpu="8", R="'rusage[mem=8]'", J="liftOver_bed", o="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.out", eo="out/logs/{study_group}/h-{htype}.{track}.liftOver_bed.err", tmp_bed="out/{study_group}/haplotype-{htype}/{track}/proteome_temp.bed"
-        shell: "cat {input.bed} | cut -c 3- > {params.tmp_bed}; liftOver {params.tmp_bed} {input.chain} {output} {output}.unmapped; rm {params.tmp_bed}"
+        shell: "cat {input.bed} | cut -c 3- > {params.tmp_bed}; {PG2_HOME}/utils/liftOver {params.tmp_bed} {input.chain} {output} {output}.unmapped; rm {params.tmp_bed}"
+        #shell: "cat {input.bed} | cut -c 3- > {params.tmp_bed}; liftOver {params.tmp_bed} {input.chain} {output} {output}.unmapped; rm {params.tmp_bed}"
 else:
     rule rename_bed:
         input: "out/{study_group}/haplotype-{htype}/{track}/proteome_preLiftBack.bed"
