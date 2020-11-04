@@ -6,4 +6,4 @@ channels:
 dependencies:
   - biopython=1.74
   - snpeff=4.5covid19
-  - pytabix
+  - samtools=1.10
