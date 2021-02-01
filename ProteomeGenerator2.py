@@ -209,7 +209,7 @@ if 'bam' in RNAseq_file_format:
         conda: "envs/STAR.yaml"
         params: n="16", mem_per_cpu="6", R="'span[hosts=1] rusage[mem=6]'", J="RNAseq_bam2fq", o="out/logs/RNAseq/bam2fq.out", eo="out/logs/RNAseq/bam2fq.err",int_readOne=os.path.join(TMP,"{sample}.RG.bam2fq.1.fq"),int_readTwo=os.path.join(TMP,"{sample}.RG.bam2fq.2.fq")
         shell: "samtools collate -O -@ {params.n} {input} | samtools fastq -@ {params.n} -1 {params.int_readOne} -2 {params.int_readTwo} -; gzip -c {params.int_readOne} > {output.read_one}; gzip -c {params.int_readTwo} > {output.read_two}"
-   
+  
 if RNA_seq_module_enabled:
     import uuid
     rule RNA_01_STAR_AlignRNAReadsByRG:

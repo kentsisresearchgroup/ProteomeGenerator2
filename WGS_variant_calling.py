@@ -401,7 +401,7 @@ rule var_som_07_CombineSomaticVCFs:
     params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_tumor_vcfs.out", eo="out/logs/merge_tumor_vcfs.err", \
         J="merge_tumor_vcfs", int_vcf="out/{study_group}/variant_calling/{cohort}.somatic_finished.vcf"
-    wildcard_constraints: study_group='control|experiment'
+    wildcard_constraints: study_group='control|experiment|tumor'
     conda: "envs/bcftools.yaml"
     shell: "bcftools concat -a -D {input.vcf} > {params.int_vcf}; bgzip {params.int_vcf}; tabix -p vcf {params.int_vcf}.gz"
 
