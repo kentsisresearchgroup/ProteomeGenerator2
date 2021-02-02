@@ -205,7 +205,7 @@ rule wgs_08b_ApplyBQSRToUnmappedReads:
 rule wgs_09_GatherRecalibratedBAMs:
     input: mapped=expand("out/WGS/BQSR/scattered-apply/{{sample}}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_{interval}_scatteredBQSR.bam",interval=[str(x).zfill(4) for x in range(NUM_BQSR_INTERVALS)]), \
 	   unmapped="out/WGS/BQSR/scattered-apply/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_unmapped_scatteredBQSR.bam"
-    output: bam="out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam",bai="out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
+    output: bam=temp("out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bam"),bai="out/WGS/{sample}.aligned_sorted_ubam-merged_RG-merged_dedup_fixedtags_BQSR.analysis_ready.bai"
     params: n="4", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", java_xmx=str(4*8), \
 	    o="out/logs/WGS/gather_recalibrated_bams.out", eo="out/logs/WGS/gather_recalibrated_bams.err", \
 	    J="gather_recalibrated_bams"
