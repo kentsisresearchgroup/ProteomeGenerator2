@@ -42,11 +42,17 @@ if 'bam' in input_file_format:
     rule wgs_01bam_RevertToUnmappedBAM:
         input: bam=lambda wildcards: config['input_files']['genome_personalization_module']['bam_inputs'][wildcards.sample]['bam_file'], tsv="out/WGS/{sample}.reverted_ubam_RGmap.tsv",ref=STOCK_GENOME_FASTA
         output: temp("out/WGS/{sample}.{readgroup}.unmapped.bam")
-        params: n="16", mem_per_cpu="10", R="'span[hosts=1] rusage[mem=10]'", java_xmx=str(16*10-4), max_records_in_ram=str(25000000), o="out/logs/WGS/revert_bam.out", eo="out/logs/WGS/revert_bam.err", J="revert_bam"
+        params: n="8", mem_per_cpu="10", R="'span[hosts=1] rusage[mem=10]'", java_xmx=str(8*10-8), max_records_in_ram=str(2500000), o="out/logs/WGS/revert_bam.out", eo="out/logs/WGS/revert_bam.err", J="revert_bam"
         conda: "envs/bwa_picard_samtools.yaml"
+        """
         shell: "picard -Xmx{params.java_xmx}g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} O={output} \
                   MAX_RECORDS_IN_RAM={params.max_records_in_ram} SANITIZE=TRUE \
                   VALIDATION_STRINGENCY=SILENT"
+        """
+        shell: "picard -Xmx{params.java_xmx}g RevertSam INPUT={input.bam} TMP_DIR={TMP} R={input.ref} \
+                  MAX_RECORDS_IN_RAM={params.max_records_in_ram} SANITIZE=TRUE \
+                  VALIDATION_STRINGENCY=SILENT \
+                  OUTPUT_BY_READGROUP=TRUE OUTPUT_MAP={input.tsv}"
 
 #    rule wgs_02bam_AddReadGroupInfo:
 #        input: 
@@ -78,7 +84,7 @@ if 'fastq' in input_file_format:
 rule wgs_02_BwaAndSortAndMergeBamAlignment:
     input:  ubam="out/WGS/{sample}.{readgroup}.unmapped.bam", ref_idx=STOCK_GENOME_FASTA+".fai", ref_dict=os.path.splitext(STOCK_GENOME_FASTA)[0]+'.dict',bwa_idx=BWA_INDEX
     output: temp("out/WGS/{sample}.{readgroup}.aligned_sorted_ubam-merged.bam")
-    params: n="32", mem_per_cpu="2", R="'span[hosts=1] rusage[mem=2]'", java_xmx=str(32*2), max_records_in_ram=str(250000*32*2), o="out/logs/WGS/bwa_n_mergebams_{sample}_{readgroup}.out", eo="out/logs/WGS/bwa_n_mergebams_{sample}_{readgroup}.err", J="bwa_mergebams", \
+    params: n="16", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", java_xmx=str(16*4), max_records_in_ram=str(250000*16*4), o="out/logs/WGS/bwa_n_mergebams_{sample}_{readgroup}.out", eo="out/logs/WGS/bwa_n_mergebams_{sample}_{readgroup}.err", J="bwa_mergebams", \
             adapter_clipping=config['parameters']['genome_personalization_module']['pre-processing']['clip_adapters'], \
             keep_secondary=config['parameters']['genome_personalization_module']['pre-processing']['keep_secondary_alignments'], \
             max_indels=config['parameters']['genome_personalization_module']['pre-processing']['max_insertions_or_deletions']
