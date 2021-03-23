@@ -138,15 +138,6 @@ rule var_germ_02_GenotypeTumorSamplePerInterval:
     shell: "gatk --java-options '-Xmx64g' GenotypeGVCFs -R {STOCK_GENOME_FASTA} \
               -V {input.gvcf} -L {input.interval_list} -O {output}"
 
-rule var_germ_TMP_HardFilterVariants:
-    input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
-    output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.hardfiltered.vcf.gz"
-    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
-        o="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.out", eo="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.err", \
-        J="hardfilter_variants_{interval}"
-    conda: "envs/gatk4.yaml"
-    shell: "gatk --java-options '-Xmx8g' VariantFiltration -V {input.vcf} -L {input.interval_list} --filter-expression 'QD < 2.0 || FS > 30.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -3.0 || ReadPosRankSum < -3.0' --filter-name 'HardFiltered' -O {output}" 
-
 rule var_germ_TMP_MergeHardFilteredIntervalWiseVCFs:
     input: expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.hardfiltered.vcf.gz",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{sample}.hardfiltered.vcf"
@@ -157,44 +148,76 @@ rule var_germ_TMP_MergeHardFilteredIntervalWiseVCFs:
     shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
 
 rule var_germ_TMP_merge_genotyped:
-    input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf=expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.genotyped.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
+    input: vcf=expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.genotyped.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.vcf"
     params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_genotyped.out", eo="out/logs/merge_genotyped.err", \
         J="merge_genotyped"
     conda: "envs/gatk4.yaml"
     shell: "picard MergeVcfs $(echo '{input.vcf}' | sed -r 's/[^ ]+/I=&/g') O={output}"
-rule var_germ_TMP_CNN2D_ScoreVariants:
-    input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.vcf"
-    output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.scored.vcf.gz"
-    params: n="16", R="'span[hosts=1] rusage[mem=8]'", \
-        o="out/logs/variant_calling/intervals/score_variants.out", eo="out/logs/variant_calling/intervals/score_variants.err", \
-        J="score_variants"
-    singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx128g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} --tensor-type read_tensor"
 
-rule var_germ_03_CNN2D_ScoreVariants:
-    input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
-    output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
-    params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
-        o="out/logs/variant_calling/intervals/score_variants_{interval}.out", eo="out/logs/variant_calling/intervals/score_variants_{interval}.err", \
-        J="score_variants_{interval}"
-    singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} -L {input.interval_list} --tensor-type read_tensor"
+is_whole_genome_or_exome = config['input_files']['genome_personalization_module']['whole_genome_or_exome']
+if is_whole_genome_or_exome:
+    rule var_germ_TMP_CNN1D_ScoreVariants:
+        input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.vcf"
+        output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.1D_CNN-scored.vcf.gz"
+        params: n="16", R="'span[hosts=1] rusage[mem=8]'", \
+            o="out/logs/variant_calling/intervals/score_variants.out", eo="out/logs/variant_calling/intervals/score_variants.err", \
+            J="score_variants"
+        singularity: "docker://broadinstitute/gatk:4.1.4.1"
+        shell: "gatk --java-options '-Xmx128g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -V {input.vcf} -O {output}"
 
-HAPMAP=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['snps_db']
-MILLS=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
-SNP_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']
-INDEL_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['indel_tranche']
-rule var_germ_04_AssignVariantTranches:
-    input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
-    output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz")
-    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
-        o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
-        J="assign_tranches"
-    singularity: "docker://broadinstitute/gatk:4.1.4.1"
-    shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
+    rule var_germ_TMP_CNN2D_ScoreVariants:
+        input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.vcf"
+        output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.genotyped.merged.scored.vcf.gz"
+        params: n="16", R="'span[hosts=1] rusage[mem=8]'", \
+            o="out/logs/variant_calling/intervals/score_variants.out", eo="out/logs/variant_calling/intervals/score_variants.err", \
+            J="score_variants"
+        singularity: "docker://broadinstitute/gatk:4.1.4.1"
+        shell: "gatk --java-options '-Xmx128g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} --tensor-type read_tensor"
+    rule var_germ_03_CNN2D_ScoreVariants:
+        input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
+        output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
+        params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
+            o="out/logs/variant_calling/intervals/score_variants_{interval}.out", eo="out/logs/variant_calling/intervals/score_variants_{interval}.err", \
+            J="score_variants_{interval}"
+        singularity: "docker://broadinstitute/gatk:4.1.4.1"
+        shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -I {input.bam} -V {input.vcf} -O {output} -L {input.interval_list} --tensor-type read_tensor"
 
+    rule var_germ_03_TMP_CNN1D_ScoreVariants:
+        input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
+        output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.1D_CNN-scored.vcf.gz"
+        params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
+            o="out/logs/variant_calling/intervals/score_variants_{interval}.out", eo="out/logs/variant_calling/intervals/score_variants_{interval}.err", \
+            J="score_variants_{interval}"
+        singularity: "docker://broadinstitute/gatk:4.1.4.1"
+        shell: "gatk --java-options '-Xmx8g' CNNScoreVariants -R {STOCK_GENOME_FASTA} -V {input.vcf} -O {output} -L {input.interval_list}"
+
+    HAPMAP=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['snps_db']
+    MILLS=config['parameters']['genome_personalization_module']['variant_calling']['resources']['germline']['indels_db']
+    SNP_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['snp_tranche']
+    INDEL_TRANCHE=config['parameters']['genome_personalization_module']['variant_calling']['advanced']['indel_tranche']
+    rule var_germ_04_AssignVariantTranches:
+        input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
+        output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz")
+        params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
+            o="out/logs/assign_tranches.out", eo="out/logs/assign_tranches.err", \
+            J="assign_tranches"
+        singularity: "docker://broadinstitute/gatk:4.1.4.1"
+        shell: "gatk --java-options '-Xmx4g' FilterVariantTranches -V {input.vcf} --resource {HAPMAP} --resource {MILLS} --info-key CNN_2D --snp-tranche {SNP_TRANCHE} --indel-tranche {INDEL_TRANCHE} --invalidate-previous-filters -O {output} -L {input.interval_list}"
+
+else:
+    
+    rule var_germ_0304_HardFilterVariants:
+        input: vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
+        output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.hardfiltered.vcf.gz"
+        params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
+            o="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.out", eo="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.err", \
+            J="hardfilter_variants_{interval}"
+        conda: "envs/gatk4.yaml"
+        shell: "gatk --java-options '-Xmx8g' VariantFiltration -V {input.vcf} -L {input.interval_list} --filter-expression 'QD < 2.0 || FS > 30.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -3.0 || ReadPosRankSum < -3.0' --filter-name 'HardFiltered' -O {output}" 
+
+"""
 rule var_germ_05_FilterNonpassingGermlineVariants:
     input: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.vcf.gz"
     output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.tranched.filtered.vcf")
@@ -207,6 +230,26 @@ rule var_germ_05_FilterNonpassingGermlineVariants:
 rule var_germ_06_MergeIntervalWiseVCFs:
     input: expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.CNN-scored.tranched.filtered.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)])
     output: "out/{study_group}/variant_calling/{sample}.germline_finished.vcf"
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
+        o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
+        J="merge_vcfs"
+    conda: "envs/gatk4.yaml"
+    shell: "picard MergeVcfs $(echo '{input}' | sed -r 's/[^ ]+/I=&/g') O={output}"
+"""
+
+rule var_germ_05_FilterNonpassingGermlineVariants:
+    input: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.{filter_mode}.vcf.gz"
+    output: temp("out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.{filter_mode}.filtered.vcf")
+    params: n="1", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", \
+        o="out/logs/filter_germline.out", eo="out/logs/filter_germline.err", \
+        J="filter_germline"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools view -f PASS {input} > {output}"
+
+rule var_germ_06_MergeIntervalWiseVCFs:
+    input: expand("out/{{study_group}}/variant_calling/HTC-scattered/{{sample}}.HTC.{interval}.{filter_mode}.filtered.vcf",interval=[str(x).zfill(4) for x in range(NUM_VARIANT_INTERVALS)],filter_mode='CNN-scored.tranched' if is_whole_genome_or_exome else 'hardfiltered')
+    output: "out/{study_group}/variant_calling/{sample}.germline_finished.vcf"
+    wildcard_constraints: filter_mode="CNN-scored.tranched|hardfiltered"
     params: n="1", mem_per_cpu="4", R="'span[hosts=1]'", \
         o="out/logs/merge_vcfs.out", eo="out/logs/merge_vcfs.err", \
         J="merge_vcfs"
