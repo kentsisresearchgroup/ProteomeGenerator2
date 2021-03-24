@@ -215,7 +215,7 @@ else:
             o="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.out", eo="out/logs/variant_calling/intervals/hardfilter_variants_{interval}.err", \
             J="hardfilter_variants_{interval}"
         conda: "envs/gatk4.yaml"
-        shell: "gatk --java-options '-Xmx8g' VariantFiltration -V {input.vcf} -L {input.interval_list} --filter-expression 'QD < 2.0 || FS > 30.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -3.0 || ReadPosRankSum < -3.0' --filter-name 'HardFiltered' -O {output}" 
+        shell: "gatk --java-options '-Xmx8g' VariantFiltration -V {input.vcf} -L {input.interval_list} --filter-expression 'QD < 2.0 || FS > 60.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0' --filter-name 'HardFiltered' -O {output}" 
 
 """
 rule var_germ_05_FilterNonpassingGermlineVariants:
