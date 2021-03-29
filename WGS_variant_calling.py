@@ -107,7 +107,9 @@ elif just_ran_WGS_preprocessing:
             command = "ln -s {} {}; ln -s {} {}".format(in_bam_path, output.bam, in_bai_path, output.bai)
             shell(command)
 
-else:
+#elif 'bam' in input_file_format:
+#    print(input_file_format)
+else: # input is an analysis-ready BAM
     PROCESSED_BAM_DICT=dict(config['input_files']['genome_personalization_module']['bam_inputs'])
     all_bams_preprocessed = True
     for sample_name in PROCESSED_BAM_DICT.keys():
