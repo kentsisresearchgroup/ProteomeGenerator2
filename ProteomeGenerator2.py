@@ -163,8 +163,9 @@ out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map : 
 rule all:
     input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), \
            expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), \
-           expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS), \
-           expand("out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'])
+           expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'],chr=CHROMOSOMES)
+           #expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS), \
+           #expand("out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'])
 """
            expand("out/{study_group}/novel_analysis/frameshifts/combined.frameshifts.map",study_group=STUDY_GROUPS), \
            expand("out/{study_group}/novel_analysis/missense/combined.missense.map",study_group=STUDY_GROUPS), \
@@ -684,7 +685,8 @@ rule maxQuant:
     input: lambda wildcards: expand("out/{study_group}/MaxQuant/rawfiles/{raw_file}",study_group=wildcards.study_group, raw_file=[os.path.basename(x) for x in RAW_FILE_DICT[wildcards.study_group]]), par = "out/{study_group}/MaxQuant/analysis_ready.mqpar.xml",db="out/{study_group}/combined.proteome.unique.fasta"
     output: "out/{study_group}/MaxQuant/combined/txt/summary.txt","out/{study_group}/MaxQuant/combined/txt/peptides.txt","out/{study_group}/MaxQuant/combined/txt/proteinGroups.txt"
     singularity: "docker://mono:6.8.0.123"
-    params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", mem_per_cpu="12", R="'span[hosts=1] rusage[mem=12]'", o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
+    params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
+    #params: n=lambda wildcards: str(max(16,min(24,len(RAW_FILE_DICT[wildcards.study_group])))), J="MQ", mem_per_cpu="12", R="'span[hosts=1] rusage[mem=12]'", o="out/logs/proteomics/mq.{study_group}.out", eo="out/logs/proteomics/mq.{study_group}.err"
     shell: "mono {MQ} {input.par}"
 
 
