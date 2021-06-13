@@ -56,14 +56,16 @@ rule SubsetAnnotatedVariantsByChr:
     conda: "envs/bcftools.yaml"
     shell: "bcftools view {input.snpEff} {wildcards.chr} > {output}"
 
+"""
 rule MapMutations_noMS:
     input: annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
     output: analysis='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis'
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="map_{mutation_type}", o="out/logs/novel_analysis/{study_group}.{mutation_type}.out", eo="out/logs/novel_analysis/{study_group}.{mutation_type}.err"
     conda: "envs/biopython.yaml"
     shell: "python {PG2_HOME}/scripts/{wildcards.mutation_type}_noMS_5-10.py {input.proteome} {input.annotated_vcf} {input.proteome_blast} {input.ref_db} > {output.analysis}"
-
 """
+
+
 rule MapMutations:
     input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
     output: analysis='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis'
@@ -83,4 +85,3 @@ rule AggregateMutations:
             novelpep_mutation=lambda wildcards: expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.novelPep_{mutation_type}.map",chr=[re.search(r'chr[0-9X]+',x).group() for x in [f for f in os.listdir("out/{}/novel_analysis/{}".format(wildcards.study_group,wildcards.mutation_type)) if 'novelPep' in f and 'combined' not in f]],study_group=wildcards.study_group,mutation_type=wildcards.mutation_type)
     shell: "python3 {PG2_HOME}/scripts/aggregate_mutations.py {params.mutation_mstrg} {params.mutation_MQevidence} {params.novelpep_mutation}"
 
-"""

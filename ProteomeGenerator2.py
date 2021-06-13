@@ -163,9 +163,9 @@ out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map : 
 rule all:
     input: expand("out/{study_group}/combined.proteome.unique.fasta",study_group=STUDY_GROUPS), \
            expand("out/{study_group}/combined.proteome.bed",study_group=STUDY_GROUPS), \
-           expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'],chr=CHROMOSOMES)
+           expand("out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'],chr=CHROMOSOMES), \
            #expand("out/{study_group}/MaxQuant/combined/txt/summary.txt",study_group=STUDY_GROUPS), \
-           #expand("out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'])
+           expand("out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map",study_group=STUDY_GROUPS,mutation_type=['missense','insertions','deletions','frameshifts'])
 """
            expand("out/{study_group}/novel_analysis/frameshifts/combined.frameshifts.map",study_group=STUDY_GROUPS), \
            expand("out/{study_group}/novel_analysis/missense/combined.missense.map",study_group=STUDY_GROUPS), \
