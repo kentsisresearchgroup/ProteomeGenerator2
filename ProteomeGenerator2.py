@@ -400,7 +400,8 @@ rule arriba:
     params: n="8", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", J="arriba_fusions", o="out/logs/fusions/arriba.out", eo="out/logs/arriba/fusions.err", \
             chroms=CHROMOSOMES
     conda: "envs/arriba.yaml"
-    shell: "~/arriba_v1.2.0/arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist -T -P"
+    shell: "arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist -T -P"
+    #shell: "~/arriba_v1.2.0/arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist -T -P"
 
 rule CompileFusionTranscripts:
     input: lambda wildcards:expand("out/{{study_group}}/haplotype-{{htype}}/gene_fusions/{sample}.fusions.tsv",sample=SAMPLE_DICT[wildcards.study_group])
