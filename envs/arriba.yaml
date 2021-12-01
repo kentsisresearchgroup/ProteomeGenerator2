@@ -1,4 +1,4 @@
 channels:
  - bioconda
 dependencies:
- - arriba=1.2.0
+ - arriba=2.1.0
