@@ -137,6 +137,9 @@ The usage of PG2 follows the general paradigm of Snakemake, in which the user sp
 
 ## Authors
 Nathanael Kwok | ndk2001@med.cornell.edu
+    
 Zita Aretz | zea4003@med.cornell.edu
+    
 Alex Kentsis | kentsisresearchgroup@gmail.com
+    
     
