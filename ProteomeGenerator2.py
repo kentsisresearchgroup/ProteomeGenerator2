@@ -399,7 +399,7 @@ rule arriba:
     output: fusions="out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions.tsv",discarded="out/{study_group}/haplotype-{htype}/gene_fusions/{sample}.fusions_discarded.tsv"
     params: n="8", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", J="arriba_fusions", o="out/logs/fusions/arriba.out", eo="out/logs/arriba/fusions.err", \
             chroms=CHROMOSOMES
-    conda: "envs/arriba.yaml"
+    #conda: "envs/arriba.yaml"
     #shell: "arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist"
     #shell: "arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist -T -P"
     shell: "/home/kwokn/arriba_v1.2.0/arriba -x {input.bam} -o {output.fusions} -O {output.discarded} -a {input.fa} -g {input.gtf} -f blacklist -T -P"
@@ -585,7 +585,8 @@ rule merge_lifted_bedFiles:
 EXPERIMENT_RAW_DIR = config['input_files']['proteomics_module']['experiment_LCMS_file_directory']
 assert EXPERIMENT_RAW_DIR is not None, "missing LCMS_file_directory!"
 CONTROL_RAW_DIR = config['input_files']['proteomics_module']['optional_control_LCMS_file_directory'] or ""
-PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "/MaxQuant/mqpar_template.xml"
+PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "mqpar_template.xml"
+#PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "/MaxQuant/mqpar_template.xml"
 MQ = PG2_HOME + "/MaxQuant/bin/MaxQuantCmd.exe"
 
 RAW_FILE_DICT=dict()
