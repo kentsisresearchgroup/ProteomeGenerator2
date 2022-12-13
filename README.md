@@ -30,7 +30,7 @@ PG2 is organized into the following modules, each of which can be run on its own
 - Miniconda for Python 3 (version >= 4.8.3) 
 - Snakemake (version >= 5.4.5) 
 - Singularity (version >= 3.6.0)
-- MaxQuant (version >= 1.6.2.3) if proteomics data provided
+- MaxQuant (version >= 1.6.2.3) if proteomics data is provided
 
 All other packages and libraries will be managed by Snakemake (via conda) and do not need to be installed by the user.
 
