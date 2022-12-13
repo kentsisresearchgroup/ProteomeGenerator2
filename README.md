@@ -29,7 +29,8 @@ PG2 is organized into the following modules, each of which can be run on its own
 
 - Miniconda for Python 3 (version >= 4.8.3) 
 - Snakemake (version >= 5.4.5) 
-- Singularity (version >= 2.4.2)
+- Singularity (version >= 3.6.0)
+- MaxQuant (version >= 1.6.2.3) if proteomics data provided
 
 All other packages and libraries will be managed by Snakemake (via conda) and do not need to be installed by the user.
 
@@ -136,7 +137,7 @@ The usage of PG2 follows the general paradigm of Snakemake, in which the user sp
 -	`out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map` : Map of all variants of a given mutation type that appear in the proteome database. Thus far this has been implemented for {missense, insertions, deletions, frameshifts}. Additionally, combined.{mutation\_type}\_MQevidence.map maps mutations to MaxQuant (MQ) evidence, and combined.novelPep\_{mutation\_type}.map maps MQ-identified non-canonical peptides to their originating mutations.
 
 ## Authors
-Nathanael Kwok | ndk2001@med.cornell.edu
+Nathaniel Kwok | ndk2001@med.cornell.edu
     
 Zita Aretz | zea4003@med.cornell.edu
     
