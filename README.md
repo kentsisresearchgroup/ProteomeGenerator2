@@ -93,6 +93,8 @@ In general, the structure of the configfile should not be changed. Doing so will
 
 ## Usage 
 
+User manual: https://github.com/kentsisresearchgroup/ProteomeGenerator2/blob/cc378b0074a604f04a8e79b8ffb2e95a65d36625/PG2_manual.pdf
+
 ### Basic Command
 
 The (suggested) snakemake command to run PG2 takes the following general form:
