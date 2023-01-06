@@ -136,11 +136,8 @@ The usage of PG2 follows the general paradigm of Snakemake, in which the user sp
 
 -	`out/{study_group}/novel_analysis/{mutation_type}/combined.{mutation_type}.map` : Map of all variants of a given mutation type that appear in the proteome database. Thus far this has been implemented for {missense, insertions, deletions, frameshifts}. Additionally, combined.{mutation\_type}\_MQevidence.map maps mutations to MaxQuant (MQ) evidence, and combined.novelPep\_{mutation\_type}.map maps MQ-identified non-canonical peptides to their originating mutations.
 
-## Authors
-Nathaniel Kwok | ndk2001@med.cornell.edu
-    
-Zita Aretz | zea4003@med.cornell.edu
-    
-Alex Kentsis | kentsisresearchgroup@gmail.com
+## Reference
+
+Nathaniel Kwok, Zita Aretz, Sumiko Takao, Zheng Ser, Paolo Cifani, Alex Kentsis. Integrative proteogenomics using ProteomeGenerator2. https://doi.org/10.1101/2023.01.04.522774 
     
     
