@@ -583,7 +583,7 @@ rule merge_lifted_bedFiles:
 ### MaxQuant Workflow ###
 
 EXPERIMENT_RAW_DIR = config['input_files']['proteomics_module']['experiment_LCMS_file_directory']
-assert EXPERIMENT_RAW_DIR is not None, "missing LCMS_file_directory!"
+#assert EXPERIMENT_RAW_DIR is not None, "missing LCMS_file_directory!"
 CONTROL_RAW_DIR = config['input_files']['proteomics_module']['optional_control_LCMS_file_directory'] or ""
 PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "/mqpar_template.xml"
 #PAR = config['input_files']['proteomics_module']['custom_params_xml'] or PG2_HOME + "/MaxQuant/mqpar_template.xml"
