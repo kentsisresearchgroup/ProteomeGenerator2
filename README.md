@@ -141,6 +141,6 @@ The usage of PG2 follows the general paradigm of Snakemake, in which the user sp
 
 ## Reference
 
-Nathaniel Kwok, Zita Aretz, Sumiko Takao, Zheng Ser, Paolo Cifani, Alex Kentsis. Integrative proteogenomics using ProteomeGenerator2. https://doi.org/10.1101/2023.01.04.522774 
+Nathaniel Kwok, Zita Aretz, Sumiko Takao, Zheng Ser, Paolo Cifani, Alex Kentsis. Integrative proteogenomics using ProteomeGenerator2. https://pubmed.ncbi.nlm.nih.gov/37418425/
     
     
