@@ -103,6 +103,18 @@ The (suggested) snakemake command to run PG2 takes the following general form:
 `snakemake --snakefile ProteomeGenerator2.py --cluster "bsub -J {params.J} -n {params.n} -R 'span[hosts=1] rusage[mem={params.mem_per_cpu}]' -W 144:00 -o {params.o} -eo {params.eo}" -j 100 -k --ri --latency-wait 30 \
 --configfile configfiles/PG2_template.yaml --use-conda --use-singularity --singularity-args "--bind /data:/data,/lila:/lila,/scratch:/scratch" -n --quiet`
 
+---
+> [!NOTE] 
+>
+> The command above has been wrapped in [run.sh](https://github.com/caitlinjones/ProteomeGenerator2/blob/master/run.sh). For each project, configure a copy of this script by uncommenting and modifying the variables to point to your config YAML, project directory, etc. 
+>
+> Any snakemake arguments can be added by appending them to the wrapper command. e.g., for a dry run:
+> ```
+> ./run.sh -n --quiet
+> ```
+>
+---
+
 It looks really complicated at first, but keep in mind that most of it doesn’t change from run to run, so you can pretty much copy & paste it for each run, with minor modifications. A brief rundown of the parameters:
 
 *Sanity checks recommended before every pipeline run:*
