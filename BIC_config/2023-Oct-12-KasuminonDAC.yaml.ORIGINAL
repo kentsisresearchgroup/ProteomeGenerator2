@@ -1,0 +1,229 @@
+directories:
+  working_and_output_dir: "/data/kentsis/aretzz/2023-Oct-12_KASUMI1_nonDACexp"
+  PG2_installation_dir: "/data/kentsis/ProteomeGenerator2"
+  
+  optional:
+    temp_dir: "/scratch/aretzz" # scratch directory for intermediate file storage
+
+stock_references:
+  genome:
+    fasta: "/lila/data/kentsis/indexes/GRCh38/GRCh38.genome.fa"
+    gtf: "/lila/data/kentsis/indexes/GRCh38/gencode.v31.annotation.gtf"
+    optional_aligner_indices: # if left blank, these will be automatically generated as needed
+      BWA:
+        BWA_index_dir:
+        BWA_prefix: 
+      STAR_index_dir: 
+  proteome: 
+    fasta: "/data/kentsis/indexes/UniProt/UP_sprot_human_canonical+isoforms+cRAP.fasta"
+
+user_defined_workflow:  # Please specify which PG2 modules you wish to execute
+
+  # The purpose of the genome personalization module is to enable PG2 to be genomic variant-aware. To achieve this, a diploid, organism-specific genome (sequence FASTA + annotation GTF) is generated and subsequently utilized in various steps of proteome generation.
+  # Required inputs are either DNA sequencing (WGS/WES) .fastq or .bam files, or a pre-made variant call file (.vcf). 
+  # Depending on input type, data pre-processing and/or variant calling should be enabled.
+  genome_personalization_module: 
+    enable_genome_personalization_module: true
+
+    data_is_matched_tumor_normal: false
+    create_separate_tumor_normal_genomes: false
+
+
+    # * If enable_genome_personalization_module == false, all of its submodules are automatically disabled and parameters automatically ignored. *
+
+    variant_calling_submodule: 
+      run_pre-processing_steps: true # true unless input is an analysis-ready bam (as defined by GATK Best Practices).
+      call_germline_variants_with_GATK4_HaplotypeCaller: true # genotyping + VQSR will also be performed
+      
+      #if_inputs_are_matched_tumor-normal_samples: 
+      call_somatic_variants_with_GATK4_Mutect2: true # if true, somatic variants will be called on the paired sample
+      #somatic variant calling on unpaired samples is currently unsupported
+    
+      continuation:
+        just_ran_PG2_preprocessing: false # default: false
+        just_finished_variant_calling: false
+    continuation:
+      just_created_custom_genome: false  # default: false
+  RNA-seq_module:
+
+    enable_RNA-seq_module: true # this module should be enabled whenever inputs include RNA-seq data, and disabled otherwise
+
+    # when the transcriptome assembly submodule is invoked, genes will be represented in the output protein database if and only if they are expressed, UNLESS merged with a gene set from the (stock or organism-specific) genome annotation
+    transcriptome_track:
+      assemble_transcriptome_with_StringTie: true
+      GTF-guided-mapping_or_denovo-assembly: 'guided' # {'guided', 'denovo'}
+      retain_all_fully_covered_reference_transcripts: false # default: false
+
+    gene_fusion_track:
+      assemble_gene_fusions_with_Arriba: false  
+
+  # Create a genome track that propagates gene subset(s) from the genome annotation GTF directly into protein prediction. Importantly, this is distinct from, and does not impact rules that depend on the GTF as input. 
+  # If DNA (WGS/WES) inputs are provided, then genes are retrieved from the organism-specific GTF (as created by the genome personalization module).
+  # The genome track runs in parallel with the transcriptome and/or gene fusion tracks.
+  genome_annotation_track: 
+    track_enabled: false
+    desired_genes:
+      # defaults: false; however, at least one subset must be set to true when only WGS/WES inputs are provided
+      all_genes: true
+      all_coding_genes: false
+      all_transcribed_genes: false
+
+input_files:
+
+  genome_personalization_module:
+    input_file_format: ['fastq'] # {'fastq', 'bam', 'vcf'}
+    cohort_or_organism_name: 'KASUMI1'
+    whole_genome_or_exome: true
+
+    fastq_inputs:
+      KASUMI1:
+        matched_sample_params:
+          is_matched_sample: false
+        read_groups:
+          ST-KASUMI1_IGO_08735_3_S3:
+            R1_fq.gz: '/data/kentsis/WGS/AML_5lines/KASUMI1/ST-KASUMI1_IGO_08735_3_S3_R1_001.fastq.gz'
+            R2_fq.gz: '/data/kentsis/WGS/AML_5lines/KASUMI1/ST-KASUMI1_IGO_08735_3_S3_R2_001.fastq.gz'
+            optional:
+              library_id: 'libA' # strongly recommended for accurate duplicate marking during pre-processing
+              sequencing_platform: 'ILLUMINA' # {'ILLUMINA', 'SOLID', 'HELICOS', 'PACBIO', ...}
+              3prime_adapter_sequence: # populate if adapter trimming is desired
+
+
+  RNA-seq_module:
+    input_file_format: 'fastq' # {'fastq'} bam not yet supported
+    read_length: 200 # default: 100
+    reads_are_paired_end: true
+
+    fastq_inputs:
+      ST-KASUMI1: # replace <RNA_fq_sample1> with actual sample name
+        experiment_vs_control: 'experiment'
+        data_is_stranded: false
+        read_groups:
+          RG1: # replace with readgroup ID
+          # NOTE: at present, input fastq files must be paired-end AND compressed with gzip
+            R1_fq.gz: "/data/kentsis/RNAseq/Proteogenomics_AML/Sample_ST-Kasumi1-RNA_IGO_08735_B_2/ST-Kasumi1-RNA_IGO_08735_B_2_S159_1.fastq.gz"
+            R2_fq.gz: "/data/kentsis/RNAseq/Proteogenomics_AML/Sample_ST-Kasumi1-RNA_IGO_08735_B_2/ST-Kasumi1-RNA_IGO_08735_B_2_S159_2.fastq.gz"
+            optional:
+              3prime_adapter_sequence:
+ 
+  
+  proteomics_module:
+    
+    input_file_format: #'raw' # {'raw', 'mzML'}
+    experiment_LCMS_file_directory: #"/data/kentsis/proteomics/Proteogenomics_of_AML_NK/KASUMI1" 
+    optional_control_LCMS_file_directory: 
+    custom_params_xml: # default: blank. If blank, will use included template xml configured with parameters below. custom params.xml file can be generated by configuring the Windows GUI and then exporting those parameters
+
+    paramGroups:
+      0: 
+        uniquely_identifying_file_substring: 'T0'
+        protease: 'Trypsin/P' # see Protease tsv file
+        fixedMods: # see Modifications tsv file
+          - 'Carbamidomethyl (C)'
+        variableMods:
+          - 'Oxidation (M)'
+          - 'Acetyl (Protein N-term)'
+          - 'Deamidation (NQ)'
+        lcms_runtype: 'Standard' # see MS configuration tsv file
+      1:
+        uniquely_identifying_file_substring: 'G0'
+        protease: 'GluC'
+        fixedMods: 
+          - 'Carbamidomethyl (C)'
+        variableMods:
+          - 'Oxidation (M)'
+          - 'Acetyl (Protein N-term)'
+          - 'Deamidation (NQ)'
+        lcms_runtype: 'Standard' # see MS configuration tsv file
+        #lcms_runtype: 'Reporter Ion MS3'
+        #isobaric_labeling: 'TMT_11plex'
+        #reporter_mass_tolerance_Da: 0.003
+parameters:
+
+  protein_prediction_main:
+    min_peptide_ORF_length: 70 # default: 100
+
+    advanced: # can usually leave on defaults
+      single_best_ORF_only: false # default: true
+      max_overlap_pct: 20 # default: 20
+      ignore_overlap_for_antisense_ORF: true # default: false
+
+  genome_personalization_module:
+
+    pre-processing:
+      clip_adapters: false # if true, 3prime_adapter_sequence must be defined for each read group above
+      keep_secondary_alignments: true # default: true
+      max_insertions_or_deletions: -1 # default: -1
+      advanced:
+        clip_overlapping_reads: true
+        BQSR_intervals_scatter: 20
+
+    variant_calling:
+      make_customRef_diploid: true # default: true; set to false if organism is not diploid
+
+      advanced:
+        variant_intervals_scatter: 50 # default: 50
+        snp_tranche: 99.9 # default: 99.9
+        indel_tranche: 96.0 # default: 96.0
+
+      resources: # if left as default, these GRCh38 resources are downloaded to corresponding locations on installation
+        wgs_calling_regions: '/data/kentsis/indexes/GRCh38/wgs_calling_regions.hg38.interval_list'
+        germline:
+          snps_db: '/data/kentsis/indexes/GRCh38/GATK_resource_bundle/hapmap_3.3.hg38.vcf.gz'
+          indels_db: '/data/kentsis/indexes/GRCh38/GATK_resource_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
+        somatic:
+          germline_population_db: '/data/kentsis/indexes/GRCh38/af-only-gnomad.hg38.vcf.gz'
+    
+  RNA-seq_module:
+
+    # only the most consequential parameters are configurable here; pro users can modify any parameter directly within snakemake rule; most 'advanced' options should typically be left on default
+    STAR_alignment:
+      advanced:
+        max_seeds_per_window: 30 # default: 50
+        max_intron_length: 100000 # default: 100000
+        max_mates_gap: 100000
+    read_filtering:
+      maximum_allowed_multimaps: 2
+      advanced:
+        filter_out_bamFlags:
+          - 4 # unmapped
+          - 256 # non-primary alignment
+          - 512 # fails sequencer checks
+    StringTie_transcriptome_assembly:    
+      append_genome_annotation: false # default: false
+      min_transcript_length: 300 # default: 300; should be >= 3*(min_pepORF_length)
+      advanced:
+        min_coverage: 2.5 # default: 2.5
+        min_isoform_frac: 0.01 # default: 0.1?
+        min_transcript_bp_gap: 50 # default: 50
+        min_fpkm_merge: 0 # default: 0
+        min_tpm_merge: 1 # default: 0?
+        keep_retained_introns: true
+ 
+
+  proteomics_module:
+
+    # parameters below are considered ONLY if custom_params_xml is blank (i.e. when using included template.xml)
+    peptide_FDR: 0.01 # default: 0.01
+    protein_FDR: 0.01 # default: 0.01
+  
+    min_pep_len: 7
+    nonspecific_min_pep_len: 8
+    nonspecific_max_pep_len: 25
+  
+    max_missed_cleavages: 2
+
+    first_search_pep_tolerance: 20
+    main_search_pep_tolerance: 4.5
+    pep_tolerance_units: 'ppm'
+    FTMS_mass_tolerance: 20 # default: 20
+    FTMS_units: 'ppm'
+    ITMS_mass_tolerance: 0.5 # default: 0.5
+    ITMS_units: 'Da'
+
+
+non-conda_packages: 
+  bcftools-dev: 'utils/bcftools_dev/bcftools'
+  chainSwap: 'utils/chainSwap'
+
+
