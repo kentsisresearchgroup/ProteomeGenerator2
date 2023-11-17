@@ -1,6 +1,6 @@
 CHROMOSOMES=['chr1','chr2','chr3','chr4','chr5','chr6','chr7','chr8','chr9','chr10','chr11','chr12','chr13','chr14','chr15','chr16','chr17','chr18','chr19','chr20','chr21','chr22','chrX']
 
-PROTEIN_FA="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
+PROTEIN_FA="/juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
 MUTATION_TYPES=['missense','insertions','deletions','frameshifts']
 
 continuing_after_variant_calling=config['user_defined_workflow']['genome_personalization_module']['variant_calling_submodule']['continuation']['just_finished_variant_calling']
@@ -26,7 +26,7 @@ rule AdjustProteomeFastaHeaders:
     shell: "python3 {PG2_HOME}/scripts/adjust_proteome_fasta_headers.py {input} > {output}"
 
 rule BlastProteome:
-    input: proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta", ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
+    input: proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta", ref_db="/juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
     output: "out/{study_group}/novel_analysis/proteome_blast.outfmt6"
     params: n="24", mem_per_cpu="3", R="'span[hosts=1] rusage[mem=3]'", J="blast_proteome", o="out/logs/blast_proteome.out", eo="out/logs/blast_proteome.err"
     conda: "envs/blast.yaml"
@@ -35,11 +35,11 @@ rule BlastProteome:
 #SNPEFF_DB=os.path.splitext(os.path.basename(STOCK_GENOME_GTF))[0]
 SNPEFF_DB=os.path.splitext(os.path.basename(PROTEIN_FA))[0]
 rule CreateSnpEffDatabase:
-    input: ref_gtf=STOCK_GENOME_GTF, genome_fa=STOCK_GENOME_FASTA, protein_fa="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa", snpEff_config=os.path.join(PG2_HOME,'utils/snpEff.config')
+    input: ref_gtf=STOCK_GENOME_GTF, genome_fa=STOCK_GENOME_FASTA, protein_fa="/juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa", snpEff_config=os.path.join(PG2_HOME,'utils/snpEff.config')
     output: genome_fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/sequences.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB),gtf=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/genes.gtf",pg2_home=PG2_HOME,db_name=SNPEFF_DB),protein_fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/protein.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB)
     params: n="8", mem_per_cpu="4", R="'span[hosts=1] rusage[mem=4]'", J="snpeff_db", o="out/logs/snpeff_db.out", eo="out/logs/snpeff_db.err", db_name=SNPEFF_DB
     conda: "envs/biopython.yaml"
-    shell: "ln -s /data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa {PG2_HOME}/utils/snpEff_dbs/{params.db_name}/protein.fa; ln -s {input.ref_gtf} {output.gtf}; ln -s {input.genome_fa} {output.genome_fa}; cat <( echo '{params.db_name}.genome : Human') {input.snpEff_config} > {input.snpEff_config}.new; mv {input.snpEff_config}.new {input.snpEff_config}; snpEff -Xmx32g build -c {input.snpEff_config} -gtf22 -v {params.db_name}"
+    shell: "ln -s /juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa {PG2_HOME}/utils/snpEff_dbs/{params.db_name}/protein.fa; ln -s {input.ref_gtf} {output.gtf}; ln -s {input.genome_fa} {output.genome_fa}; cat <( echo '{params.db_name}.genome : Human') {input.snpEff_config} > {input.snpEff_config}.new; mv {input.snpEff_config}.new {input.snpEff_config}; snpEff -Xmx32g build -c {input.snpEff_config} -gtf22 -v {params.db_name}"
 
 rule AnnotatePredictedVariantEffects:
     input: vcf="out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz" if continuing_after_variant_calling else WGS_variant_calling("out/{study_group}/variant_calling/{cohort}.{study_group}.variant_calling_finished.vcf.gz"),snpEff_config=os.path.join(PG2_HOME,'utils/snpEff.config'), fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/sequences.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB), gtf=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/genes.gtf",pg2_home=PG2_HOME,db_name=SNPEFF_DB), protein_fa=expand("{pg2_home}/utils/snpEff_dbs/{db_name}/protein.fa",pg2_home=PG2_HOME,db_name=SNPEFF_DB)
@@ -58,7 +58,7 @@ rule SubsetAnnotatedVariantsByChr:
 
 """
 rule MapMutations_noMS:
-    input: annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
+    input: annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa"
     output: analysis='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis'
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="map_{mutation_type}", o="out/logs/novel_analysis/{study_group}.{mutation_type}.out", eo="out/logs/novel_analysis/{study_group}.{mutation_type}.err"
     conda: "envs/biopython.yaml"
@@ -67,7 +67,7 @@ rule MapMutations_noMS:
 
 
 rule MapMutations:
-    input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
+    input: novel_peps="out/{study_group}/novel_analysis/novel_peptides.txt",annotated_vcf=lambda wildcards:expand("out/{study_group}/novel_analysis/snpEff/{{chr}}.snpEff.vcf",study_group=wildcards.study_group if matched_tumor_normal_data else 'experiment'),proteome="out/{study_group}/combined.proteome.unique.headers_adjusted.fasta",proteome_blast="out/{study_group}/novel_analysis/proteome_blast.outfmt6",ref_db="/juno/depot/custom/PG2/data/kentsis/indexes/GRCh38/gencode.v31.pc_translations.fa",novelpep_transcript_map="out/{study_group}/novel_analysis/novelPeptide_transcript_map.txt"
     output: analysis='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.analysis'
     params: n="1", mem_per_cpu="4", R="'rusage[mem=4]'", J="map_{mutation_type}", o="out/logs/novel_analysis/{study_group}.{mutation_type}.out", eo="out/logs/novel_analysis/{study_group}.{mutation_type}.err", \
             mutation_mstrg_map='out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}.map',mutation_MQevidence_map="out/{study_group}/novel_analysis/{mutation_type}/{chr}.{mutation_type}_MQevidence.map",novelpep_mutation_map="out/{study_group}/novel_analysis/{mutation_type}/{chr}.novelPep_{mutation_type}.map"

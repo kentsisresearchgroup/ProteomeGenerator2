@@ -180,7 +180,7 @@ if is_whole_genome_or_exome:
     rule var_germ_03_CNN2D_ScoreVariants:
         input: bam="out/{study_group}/variant_calling/{sample}.analysis_ready.bam",vcf="out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.genotyped.vcf",interval_list="out/{study_group}/variant_calling/intervals/{interval}-scattered.interval_list"
         output: "out/{study_group}/variant_calling/HTC-scattered/{sample}.HTC.{interval}.CNN-scored.vcf.gz"
-        params: n="1", mem_per_cpu="8", R="'span[hosts=1] rusage[mem=8]'", \
+        params: n="1", mem_per_cpu="16", R="'span[hosts=1] rusage[mem=16]'", \
             o="out/logs/variant_calling/intervals/score_variants_{interval}.out", eo="out/logs/variant_calling/intervals/score_variants_{interval}.err", \
             J="score_variants_{interval}"
         singularity: "docker://broadinstitute/gatk:4.1.4.1"
