@@ -1,6 +1,8 @@
 channels:
+ - bioconda/label/cf201901
  - bioconda
-
+ - conda-forge
 dependencies:
  - transdecoder=5.5.0
  - gffread=0.9.12
+ - perl=5.22.0
